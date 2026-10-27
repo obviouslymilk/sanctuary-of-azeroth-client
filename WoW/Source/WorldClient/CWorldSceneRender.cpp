@@ -1,5 +1,4 @@
 #include <cfloat>
-#include "Engine/Source/GxModern/GxModern.h"
 #include "CWorldSceneRender.h"
 #include "WoW/Source/WorldClient/Map.h"
 #include "WoW/Source/WorldClient/World.h"
@@ -165,10 +164,6 @@ void CWorldScene::Render(const C3Vector& cameraPos, float time) {
         clearColor = info->m_fogInterior.m_color;
     } else if (s_liquidTypeId || (!info->m_showSky && DayNight::GetFogOverride())) {
         clearColor = info->m_fog.m_color;
-    } else if (GxModern::Active()) {
-        // Gaps between far terrain pieces show the clear color, and without MSAA they read as black lines
-        clearColor = info->m_fog.m_color;
-        clearColor.a = 0x00;
     } else {
         clearColor.b = 0x00;
         clearColor.g = 0x00;

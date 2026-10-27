@@ -2,7 +2,6 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
-#include "Engine/Source/GxModern/GxModern.h"
 #include "ConsoleDevice.h"
 #include "ConsoleDetect.h"
 #include "Engine/Source/Base/CmdLine.h"
@@ -311,7 +310,6 @@ void RemoveConsoleDeviceDefaultCallback(void (*callback)(OPTION_PAGE page)) {
 // OFFSET: 0x0076AB80
 void ConsoleDeviceInitialize(const char* title, bool unused_a2, bool unused_a3) {
     GxLogOpen();
-    GxModern::RegisterCVars();
 
     s_cvHwDetect = CVar::Register("hwDetect", "do hardware detection", 1, "1", nullptr, CATEGORY_GRAPHICS, false, nullptr, false);
     ConsoleDetectDetectHardware(s_hardware, s_hwChanged);

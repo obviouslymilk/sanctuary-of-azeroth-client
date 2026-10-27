@@ -3,7 +3,6 @@
 #include <cstdint>
 #include "Engine/Source/ShaderEffect/ShadowCache.h"
 #include "Engine/Source/Base/Handle.h"
-#include "Engine/Source/ConsoleBase/ConsoleVar.h"
 #include "Engine/Source/Gx/CGxDevice/CGxDevice.h"
 #include "Engine/Source/Gx/CGxTexFlags.h"
 #include "Engine/Source/Gx/Gx.h"
@@ -19,7 +18,7 @@ float CShadowCache::s_debugAspect = 1.0f;
 int32_t CShadowCache::s_recreateTextures = 1;
 
 // STATIC: 0x00B1D520
-float CShadowCache::s_bandRadius[3] = { 40.0f, 160.0f, 640.0f };
+const float CShadowCache::s_bandRadius[3] = { 40.0f, 160.0f, 640.0f };
 
 // STATIC: 0x00B1D52C
 const float CShadowCache::s_bandUpdateDistance[3] = { 4.0f, 16.0f, 1024.0f };
@@ -574,23 +573,9 @@ void CShadowCache::GatherBands(CShadowCacheQueryData& data, const C3Vector& pos,
             }
 
             float invCell = 1.0f / cell;
-
-            // Snap to whole shadow texels in the light's own basis so the map doesn't shimmer
-            C3Vector axisZ = CShadowCache::s_sunDir;
-            axisZ.Normalize();
-            C3Vector axisX = C3Vector::Cross(C3Vector(1.0f, 0.0f, 0.0f), axisZ);
-            axisX.Normalize();
-            C3Vector axisY = C3Vector::Cross(axisZ, axisX);
-            axisY.Normalize();
-
-            float texel = 2.0f * band.m_radius / static_cast<float>(CShadowCache::s_shadowSize);
-            float snapX = floor((band.m_pos.x * axisX.x + band.m_pos.y * axisX.y + band.m_pos.z * axisX.z) / texel) * texel;
-            float snapY = floor((band.m_pos.x * axisY.x + band.m_pos.y * axisY.y + band.m_pos.z * axisY.z) / texel) * texel;
-            float depth = floor((band.m_pos.x * axisZ.x + band.m_pos.y * axisZ.y + band.m_pos.z * axisZ.z) * invCell) * cell;
-
-            band.m_pos.x = snapX * axisX.x + snapY * axisY.x + depth * axisZ.x;
-            band.m_pos.y = snapX * axisX.y + snapY * axisY.y + depth * axisZ.y;
-            band.m_pos.z = snapX * axisX.z + snapY * axisY.z + depth * axisZ.z;
+            band.m_pos.x = floor(invCell * band.m_pos.x) * cell;
+            band.m_pos.y = floor(band.m_pos.y * invCell) * cell;
+            band.m_pos.z = floor(band.m_pos.z * invCell) * cell;
 
             data.m_pos[i] = band.m_pos;
 
@@ -879,29 +864,6 @@ void CShadowCache::Init() {
 
     if (CShadowCache::s_shadowMode >= SHADOW_HIGH || CShadowCache::s_shadowMode == SHADOW_MEDIUM) {
         CShadowCache::s_shadowSize = 2048;
-    }
-
-    static const float defaultRadius[3] = { 40.0f, 160.0f, 640.0f };
-
-    for (uint32_t i = 0; i < 3; i++) {
-        CShadowCache::s_bandRadius[i] = defaultRadius[i];
-    }
-
-    if (CShadowCache::s_shadowMode == SHADOW_VERY_HIGH) {
-        CVar* sizeVar = CVar::Lookup("shadowMapSize");
-        CVar* radiusVars[3] = { CVar::Lookup("shadowBand0Radius"), CVar::Lookup("shadowBand1Radius"), CVar::Lookup("shadowBand2Radius") };
-
-        if (sizeVar) {
-            uint32_t size = sizeVar->m_intValue >= 4096 ? 4096 : 2048;
-            uint32_t maxSize = g_theGxDevicePtr->Caps().m_texMaxSize[GxTex_2d];
-            CShadowCache::s_shadowSize = size > maxSize ? maxSize : size;
-        }
-
-        for (uint32_t i = 0; i < 3; i++) {
-            if (radiusVars[i] && radiusVars[i]->m_floatValue >= 1.0f) {
-                CShadowCache::s_bandRadius[i] = radiusVars[i]->m_floatValue;
-            }
-        }
     }
 
     CShadowCache::InitPcfOffsets();

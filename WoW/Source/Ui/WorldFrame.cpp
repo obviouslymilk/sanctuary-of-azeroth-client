@@ -58,7 +58,6 @@
 #include "WoW/Source/SoundInterface/SoundInterface2.h"
 #include "WoW/Source/UIUtil/Camera.h"
 #include "WoW/Source/UIUtil/Cursor.h"
-#include "WoW/Source/WorldClient/ModernRender.h"
 #include "WoW/Source/UIUtil/InputControl.h"
 #include "WoW/Source/UIUtil/PortraitButton.h"
 #include "WoW/Source/UIUtil/SmartScreenRect.h"
@@ -1682,7 +1681,6 @@ void CGWorldFrame::OnWorldRender() {
     GxRsSet(GxRs_Multisample, 1);
     CGWorldFrame::UpdateScreenEffectParams();
     FFX::Start();
-    ModernRender::Begin();
 
     CRect fullViewport = { 0.0f, 0.0f, 1.0f, 1.0f };
 
@@ -1749,7 +1747,6 @@ void CGWorldFrame::OnWorldRender() {
     CM2Scene* scene = World::s_m2Scene;
 
     if (!scene) {
-        ModernRender::End(this->m_viewportNDC);
         return;
     }
 
@@ -1763,9 +1760,7 @@ void CGWorldFrame::OnWorldRender() {
 
     GxuSortDrawList(GxuCat_0, GxuSort_VtxStream, *World::GetCamPos());
     GxuFlushDrawList(GxuCat_0, *World::GetCamPos());
-    ModernRender::AfterSolid();
     CWorldScene::RenderDetailDoodads();
-    ModernRender::AfterOpaque();
 
     if (World::SceneCamLiquidStatus(nullptr)) {
         CWorldScene::RenderBarriers(this->m_elapsedSec);
@@ -1793,7 +1788,6 @@ void CGWorldFrame::OnWorldRender() {
     GxuSortDrawList(GxuCat_1, GxuSort_B2F, *World::GetCamPos());
     GxuFlushDrawList(GxuCat_1, *World::GetCamPos());
     DayNight::RenderGlares();
-    ModernRender::End(this->m_viewportNDC);
     PlayerNameUpdateLate();
 
     if (CWorld::enables & 0x20000000) {

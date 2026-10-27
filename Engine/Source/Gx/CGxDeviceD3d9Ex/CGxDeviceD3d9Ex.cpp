@@ -15,7 +15,6 @@
 #include "ThirdParty/nvapi/nvapi.h"
 #include "Engine/Source/ShaderEffect/Types.h"
 #include "GameVersion.h"
-#include "Engine/Source/GxModern/GxModern.h"
 
 typedef HRESULT (WINAPI* Direct3DCreate9ExProc)(UINT sdkVersion, IDirect3D9Ex** d3d);
 
@@ -2260,7 +2259,7 @@ void CGxDeviceD3d9Ex::ISetPresentParms(D3DPRESENT_PARAMETERS& d3dpp, const CGxFo
             break;
     }
 
-    if (format.m_multisampleCount <= 1 || GxModern::WantsPipelineAtDeviceCreate()) {
+    if (format.m_multisampleCount <= 1) {
         if (format.m_window && this->m_allowFlipEx) {
             d3dpp.SwapEffect = D3DSWAPEFFECT_FLIPEX;
             d3dpp.BackBufferCount = d3dpp.BackBufferCount < 2 ? 2 : d3dpp.BackBufferCount;
@@ -2660,7 +2659,6 @@ int32_t CGxDeviceD3d9Ex::ICreateD3dDevice(const CGxFormat& format) {
 // VERIFY: 22679807 manual
 // OFFSET: 0x006A1CE0
 void CGxDeviceD3d9Ex::IReleaseD3dResources(int32_t freeTextures) {
-    GxModern::ReleaseResources();
     this->ITexForceRecreation(freeTextures);
     this->IReleaseD3dShaders(freeTextures);
     this->IReleaseD3dPools(freeTextures);
@@ -2745,7 +2743,6 @@ int32_t CGxDeviceD3d9Ex::DeviceWM(EGxWM wm, uintptr_t param1, uintptr_t param2) 
 // VERIFY: 0945f992 auto
 // OFFSET: 0x006A1F40
 void CGxDeviceD3d9Ex::IDestroyD3d() {
-    GxModern::Shutdown();
     this->ISceneEnd();
     this->m_context = 0;
 
@@ -3126,7 +3123,6 @@ void CGxDeviceD3d9Ex::ScenePresent() {
         int32_t scrShotClick = this->m_scrShotClick;
 
         CGxDevice::ScenePresent();
-        GxModern::PanelRender();
         this->ISceneEnd();
         this->ICursorDraw();
 
@@ -3318,10 +3314,6 @@ void CGxDeviceD3d9Ex::DeviceSetBaseMipLevel(uint32_t level) {
 // OFFSET: 0x006A0360
 LRESULT CALLBACK CGxDeviceD3d9Ex::WindowProcD3d(HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam) {
     CGxDeviceD3d9Ex* device = reinterpret_cast<CGxDeviceD3d9Ex*>(GetWindowLongPtrA(hwnd, GWLP_USERDATA));
-
-    if (GxModern::PanelWndProc(hwnd, message, wparam, lparam)) {
-        return 0;
-    }
 
     switch (message) {
         case WM_CREATE:
