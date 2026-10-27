@@ -1763,6 +1763,7 @@ void CGWorldFrame::OnWorldRender() {
 
     GxuSortDrawList(GxuCat_0, GxuSort_VtxStream, *World::GetCamPos());
     GxuFlushDrawList(GxuCat_0, *World::GetCamPos());
+    ModernRender::AfterSolid();
     CWorldScene::RenderDetailDoodads();
     ModernRender::AfterOpaque();
 

@@ -85,6 +85,7 @@ float4 FogMarchPS(float2 uv : TEXCOORD0, float2 vpos : VPOS) : COLOR0 {
         sigma *= lerp(1.0, n, g_density.w);
         sigma *= 1.0 - smoothstep(0.6 * fogEnd, fogEnd, t);
         sigma *= g_windWeight.w;
+        sigma *= smoothstep(g_density.z - 4.0, g_density.z, wp.z);
 
         float vis = 1.0;
 #ifdef GODRAYS
@@ -94,6 +95,10 @@ float4 FogMarchPS(float2 uv : TEXCOORD0, float2 vpos : VPOS) : COLOR0 {
         float ext = exp(-sigma * dt);
         L += T * S * (1.0 - ext);
         T *= ext;
+    }
+
+    if (isnan(T) || isnan(L.x + L.y + L.z)) {
+        return float4(0.0, 0.0, 0.0, 1.0);
     }
 
     return float4(saturate(L), T);
@@ -130,7 +135,8 @@ float4 FogTemporalPS(float2 uv : TEXCOORD0) : COLOR0 {
     float2 inside = step(0.0, prevUv) * step(prevUv, 1.0);
     float valid = pc.w > 0.0 ? inside.x * inside.y : 0.0;
 
-    float4 hist = clamp(tex2D(g_hist, prevUv), mn, mx);
+    float4 hist = tex2D(g_hist, prevUv);
+    hist = isnan(hist.x + hist.y + hist.z + hist.w) ? cur : clamp(hist, mn, mx);
     return lerp(cur, hist, g_temporal.x * valid);
 }
 

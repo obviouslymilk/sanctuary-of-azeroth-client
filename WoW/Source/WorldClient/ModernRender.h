@@ -5,6 +5,7 @@ class CRect;
 
 namespace ModernRender {
 void Begin();
+void AfterSolid();
 void AfterOpaque();
 void End(const CRect& viewportNDC);
 }

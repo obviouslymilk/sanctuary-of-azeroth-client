@@ -56,7 +56,8 @@ float4 GtaoPS(float2 uv : TEXCOORD0, float2 vpos : VPOS) : COLOR0 {
     float3 dx = length(pL - P) < length(pR - P) ? P - pL : pR - P;
     float3 dy = length(pU - P) < length(pD - P) ? P - pU : pD - P;
     float3 V = normalize(-P);
-    float3 N = normalize(cross(dx, dy));
+    float3 N = cross(dx, dy);
+    N /= max(length(N), 1e-8);
     N = dot(N, V) < 0.0 ? -N : N;
 
     float radius = g_params.x;
@@ -77,7 +78,8 @@ float4 GtaoPS(float2 uv : TEXCOORD0, float2 vpos : VPOS) : COLOR0 {
 
         float3 probe = LoadPos(uv + dir2 * texel * 4.0);
         float3 d3 = probe - P;
-        d3 = normalize(d3 - V * dot(d3, V));
+        d3 = d3 - V * dot(d3, V);
+        d3 /= max(length(d3), 1e-8);
         float3 axis = cross(d3, V);
 
         float3 projN = N - axis * dot(N, axis);
@@ -120,6 +122,7 @@ float4 GtaoPS(float2 uv : TEXCOORD0, float2 vpos : VPOS) : COLOR0 {
     }
 
     float ao = saturate(visibility / SLICES);
+    ao = isnan(ao) ? 1.0 : ao;
     return float4(ao, ao, ao, ao);
 }
 

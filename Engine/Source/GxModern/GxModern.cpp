@@ -57,9 +57,9 @@ static const CVarDef s_cvarDefs[CV_Count] = {
     { "ssaoStrength", "Ambient occlusion strength (0-1)", "0.6" },
     { "ssaoRadius", "Ambient occlusion radius in yards", "1.0" },
     { "volumeFog", "Volumetric fog: 0 off, 1 = 16 steps, 2 = 32 steps", "1" },
-    { "volumeFogDensity", "Volumetric fog extinction per yard at base height", "0.02" },
+    { "volumeFogDensity", "Volumetric fog extinction per yard at base height", "0.006" },
     { "volumeFogHeightFalloff", "Volumetric fog density falloff per yard above base height", "0.15" },
-    { "volumeFogHeightOffset", "Volumetric fog base height relative to the player in yards", "-5.0" },
+    { "volumeFogHeightOffset", "Volumetric fog base height relative to the player in yards", "-1.0" },
     { "volumeFogNoise", "Volumetric fog drifting noise strength (0-1)", "0.5" },
     { "volumeFogWind", "Volumetric fog noise drift speed in yards per second", "1.0" },
     { "volumeFogSunGlow", "Volumetric fog in-scatter strength toward the sun or moon", "1.0" },
@@ -352,7 +352,7 @@ static bool EnsureSceneTargets(IDirect3DDevice9* device, int width, int height) 
     ReleaseTargets();
     FogResetHistory();
 
-    if (!g_sceneColor.Ensure(device, width, height, D3DFMT_A8R8G8B8)) {
+    if (!g_sceneColor.Ensure(device, width, height, D3DFMT_X8R8G8B8)) {
         return false;
     }
 
@@ -420,7 +420,7 @@ void BeginWorld() {
     s_frameActive = true;
 }
 
-static void BuildFrame(const WorldParams& params) {
+static void BuildFrame(const WorldParams& params, bool advance) {
     g_frame.params = params;
     g_frame.frameIndex = ++s_frameCounter;
 
@@ -517,7 +517,7 @@ static void BuildFrame(const WorldParams& params) {
     if (!s_smoothedValid || std::fabs(params.playerZ - s_smoothedZ) > 50.0f) {
         s_smoothedZ = params.playerZ;
         s_smoothedValid = true;
-    } else {
+    } else if (advance) {
         float blend = 1.0f - std::exp(-params.deltaSec / 10.0f);
         s_smoothedZ += (params.playerZ - s_smoothedZ) * blend;
     }
@@ -535,7 +535,7 @@ static bool CaptureState(IDirect3DDevice9* device) {
     return SUCCEEDED(s_stateBlock->Capture());
 }
 
-void AfterOpaque(const WorldParams& params) {
+static void RunStage(const WorldParams& params, bool ssao) {
     if (!s_frameActive) {
         return;
     }
@@ -546,16 +546,28 @@ void AfterOpaque(const WorldParams& params) {
         return;
     }
 
-    BuildFrame(params);
+    BuildFrame(params, ssao);
 
     device->SetDepthStencilSurface(nullptr);
 
-    SsaoRun();
-    FogRun();
+    if (ssao) {
+        SsaoRun();
+    } else {
+        FogRun();
+    }
 
     device->SetRenderTarget(0, g_sceneColor.surf);
     device->SetDepthStencilSurface(g_sceneDepthSurf);
     s_stateBlock->Apply();
+}
+
+// Runs before the grass so detail doodads get no occlusion
+void AfterSolid(const WorldParams& params) {
+    RunStage(params, true);
+}
+
+void AfterOpaque(const WorldParams& params) {
+    RunStage(params, false);
 }
 
 static void CopyToTarget(IDirect3DDevice9* device, IDirect3DTexture9* source, IDirect3DSurface9* destination) {

@@ -146,7 +146,11 @@ static void ComboCVar(const char* label, const char* name, const char* const* it
 }
 
 static void DefaultsButton(const char* const* names, int count) {
-    if (!ImGui::Button("Defaults")) {
+    ImGui::PushID(names[0]);
+    bool pressed = ImGui::Button("Defaults");
+    ImGui::PopID();
+
+    if (!pressed) {
         return;
     }
 
@@ -209,7 +213,7 @@ static void BuildPanel() {
     if (ImGui::CollapsingHeader("Volumetric fog", ImGuiTreeNodeFlags_DefaultOpen)) {
         ComboCVar("Quality##fog", "volumeFog", fogLevels, 3);
         TimeLine(Section_Fog);
-        SliderCVar("Density", "volumeFogDensity", 0.0f, 0.2f);
+        SliderCVar("Density", "volumeFogDensity", 0.0f, 0.05f);
         SliderCVar("Height falloff", "volumeFogHeightFalloff", 0.0f, 1.0f);
         SliderCVar("Height offset", "volumeFogHeightOffset", -50.0f, 50.0f);
         SliderCVar("Noise", "volumeFogNoise", 0.0f, 1.0f);

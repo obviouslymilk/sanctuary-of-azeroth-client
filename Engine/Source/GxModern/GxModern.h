@@ -28,6 +28,7 @@ void ReleaseResources();
 void Shutdown();
 
 void BeginWorld();
+void AfterSolid(const WorldParams& params);
 void AfterOpaque(const WorldParams& params);
 void EndWorld(float minX, float minY, float maxX, float maxY);
 

@@ -13,14 +13,13 @@ void ModernRender::Begin() {
     GxModern::BeginWorld();
 }
 
-void ModernRender::AfterOpaque() {
+static bool FillParams(GxModern::WorldParams& params) {
     DayNight::DNInfo* info = DayNight::GetInfo();
 
     if (!info || !CMap::s_mapLight) {
-        return;
+        return false;
     }
 
-    GxModern::WorldParams params;
     params.fogColor[0] = info->m_fog.m_color.r / 255.0f;
     params.fogColor[1] = info->m_fog.m_color.g / 255.0f;
     params.fogColor[2] = info->m_fog.m_color.b / 255.0f;
@@ -45,8 +44,23 @@ void ModernRender::AfterOpaque() {
     params.playerZ = info->m_playerPos.z;
     params.deltaSec = info->m_deltaSec;
     params.time = info->m_timeSec;
+    return true;
+}
 
-    GxModern::AfterOpaque(params);
+void ModernRender::AfterSolid() {
+    GxModern::WorldParams params;
+
+    if (FillParams(params)) {
+        GxModern::AfterSolid(params);
+    }
+}
+
+void ModernRender::AfterOpaque() {
+    GxModern::WorldParams params;
+
+    if (FillParams(params)) {
+        GxModern::AfterOpaque(params);
+    }
 }
 
 void ModernRender::End(const CRect& viewportNDC) {
