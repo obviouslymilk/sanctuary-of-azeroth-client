@@ -14,6 +14,7 @@
 #include "ThirdParty/nvapi/nvapi.h"
 #include "Engine/Source/ShaderEffect/Types.h"
 #include "GameVersion.h"
+#include "Engine/Source/GxModern/GxModern.h"
 
 typedef IDirect3D9* (WINAPI* Direct3DCreate9Proc)(UINT sdkVersion);
 
@@ -2248,7 +2249,7 @@ void CGxDeviceD3d::ISetPresentParms(D3DPRESENT_PARAMETERS& d3dpp, const CGxForma
             break;
     }
 
-    if (format.m_multisampleCount <= 1) {
+    if (format.m_multisampleCount <= 1 || GxModern::WantsPipelineAtDeviceCreate()) {
         d3dpp.Flags = D3DPRESENTFLAG_LOCKABLE_BACKBUFFER;
         return;
     }
@@ -2659,6 +2660,7 @@ int32_t CGxDeviceD3d::ICreateD3dDevice(const CGxFormat& format) {
 // VERIFY: 7e7b165d manual
 // OFFSET: 0x00690150
 void CGxDeviceD3d::IReleaseD3dResources(int32_t freeTextures) {
+    GxModern::ReleaseResources();
     this->ITexForceRecreation(freeTextures);
     this->IReleaseD3dShaders(freeTextures);
     this->IReleaseD3dPools(freeTextures);
@@ -2758,6 +2760,7 @@ int32_t CGxDeviceD3d::DeviceWM(EGxWM wm, uintptr_t param1, uintptr_t param2) {
 // VERIFY: 53945590 manual
 // OFFSET: 0x006903B0
 void CGxDeviceD3d::IDestroyD3d() {
+    GxModern::Shutdown();
     for (uint32_t i = 0; i < 2; i++) {
         if (CGxDevice::s_uiVertexShader[i]) {
             g_theGxDevicePtr->ShaderDestroy(CGxDevice::s_uiVertexShader[i]);
@@ -3231,6 +3234,7 @@ void CGxDeviceD3d::ScenePresent() {
         int32_t scrShotClick = this->m_scrShotClick;
 
         CGxDevice::ScenePresent();
+        GxModern::PanelRender();
         this->ISceneEnd();
         this->ICursorDraw();
 
@@ -3423,6 +3427,10 @@ void CGxDeviceD3d::DeviceSetBaseMipLevel(uint32_t level) {
 // OFFSET: 0x006A0360
 LRESULT CALLBACK CGxDeviceD3d::WindowProcD3d(HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam) {
     CGxDeviceD3d* device = reinterpret_cast<CGxDeviceD3d*>(GetWindowLongPtrA(hwnd, GWLP_USERDATA));
+
+    if (GxModern::PanelWndProc(hwnd, message, wparam, lparam)) {
+        return 0;
+    }
 
     switch (message) {
         case WM_CREATE:

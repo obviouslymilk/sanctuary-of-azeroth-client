@@ -55,7 +55,7 @@ struct CShadowCacheQueryData {
 
 class CShadowCache {
     public:
-    static const float s_bandRadius[3];
+    static float s_bandRadius[3];
     static const float s_bandUpdateDistance[3];
     static C4Vector s_cutoffPlane;
     static C4Vector s_cutoffPlaneDefault;

@@ -46,6 +46,7 @@ target_link_libraries(Wow
         FrameXML
         Gx
         Gxu
+        GxModern
         Images
         Model2
         Os
