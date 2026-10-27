@@ -12,7 +12,7 @@ cmake -S . -B build/x64 -A x64
 cmake --build build/x64 --config Release --target WowClient --parallel
 ```
 
-Win32 (needs NASM): same with `build/win32` and `-A Win32`. No tests; the check is the build.
+x64 only: never configure or build Win32 (`-A Win32`). No tests; the check is the build.
 
 ## Hard constraints
 
@@ -20,8 +20,8 @@ Win32 (needs NASM): same with `build/win32` and `-A Win32`. No tests; the check 
   above it; porting progress is measured from these tags.
 - Source mirrors the original client: `Engine/Source/<Module>`, `WoW/Source/<Module>`, original
   file names.
-- x64 is the main target; Win32 must still build, as it checks struct layouts against the 32-bit
-  original.
+- Struct layouts must match the 32-bit original; with no Win32 build, verify by hand when editing
+  structs.
 - Never commit game data (the client's `Data` folder, `DivxDecoder.dll`).
 
 ## Docs

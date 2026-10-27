@@ -16,7 +16,18 @@
 #include "Engine/Source/ShaderEffect/Types.h"
 #include "GameVersion.h"
 
-typedef IDirect3D9* (WINAPI* Direct3DCreate9Proc)(UINT sdkVersion);
+typedef HRESULT (WINAPI* Direct3DCreate9ExProc)(UINT sdkVersion, IDirect3D9Ex** d3d);
+
+static D3DDISPLAYMODEEX FullScreenDisplayMode(const D3DPRESENT_PARAMETERS& parameters) {
+    D3DDISPLAYMODEEX mode = {};
+    mode.Size = sizeof(mode);
+    mode.Width = parameters.BackBufferWidth;
+    mode.Height = parameters.BackBufferHeight;
+    mode.RefreshRate = parameters.FullScreen_RefreshRateInHz;
+    mode.Format = parameters.BackBufferFormat;
+    mode.ScanLineOrdering = D3DSCANLINEORDERING_UNKNOWN;
+    return mode;
+}
 
 // STATIC: 0x00A2F3E8
 const D3DFORMAT CGxDeviceD3d9Ex::s_GxFormatToD3dFormat[CGxFormat::Formats_Last] = { D3DFMT_R5G6B5, D3DFMT_X8R8G8B8, D3DFMT_A8R8G8B8, D3DFMT_A2R10G10B10, D3DFMT_D16, D3DFMT_D24X8, D3DFMT_D24S8, D3DFMT_D32 };
@@ -222,7 +233,7 @@ void CGxDeviceD3d9Ex::BufData(CGxBuf* buf, const void* data, uint32_t size, uint
 
 // VERIFY: bc454786 auto
 // OFFSET: 0x0068E140
-void CGxDeviceD3d9Ex::IUnloadD3dLib(HINSTANCE& d3dLib, LPDIRECT3D9& d3d) {
+void CGxDeviceD3d9Ex::IUnloadD3dLib(HINSTANCE& d3dLib, LPDIRECT3D9EX& d3d) {
     if (d3d) {
         d3d->Release();
         d3d = nullptr;
@@ -237,12 +248,11 @@ void CGxDeviceD3d9Ex::IUnloadD3dLib(HINSTANCE& d3dLib, LPDIRECT3D9& d3d) {
 // VERIFY: 01b7ea49 manual
 // OFFSET: 0x0068E180
 LPDIRECT3DINDEXBUFFER9 CGxDeviceD3d9Ex::ICreateD3dIB(EGxPoolUsage usage, uint32_t size) {
-    D3DPOOL d3dPool = D3DPOOL_MANAGED;
+    D3DPOOL d3dPool = D3DPOOL_DEFAULT;
     DWORD d3dUsage = D3DUSAGE_WRITEONLY | (this->m_d3dIsHwDevice ? 0 : D3DUSAGE_SOFTWAREPROCESSING);
 
     if (usage == GxPoolUsage_Stream || usage == GxPoolUsage_Dynamic) {
         d3dUsage |= D3DUSAGE_DYNAMIC;
-        d3dPool = D3DPOOL_DEFAULT;
     }
 
     LPDIRECT3DINDEXBUFFER9 indexBuffer = nullptr;
@@ -285,10 +295,9 @@ void CGxDeviceD3d9Ex::DeviceEvictResources() {
         return;
     }
 
-    HRESULT hr = this->m_d3dDevice->EvictManagedResources();
-
-    if (FAILED(hr) && hr == D3DERR_DRIVERINTERNALERROR) {
-        SErrDisplayError(STORM_ERROR_FATAL_CONDITION, __FILE__, __LINE__, "Driver internal error on EvictManagedResources().", 0, 1, 0x11111111);
+    while (CGxTex* texId = this->m_texCacheList.Tail()) {
+        this->ITexReleaseD3dTexture(texId);
+        texId->m_link2.Unlink();
     }
 }
 
@@ -373,7 +382,7 @@ void CGxDeviceD3d9Ex::ICursorCreate(const CGxFormat& format) {
     CGxDevice::ICursorCreate(format);
 
     if (this->m_hwCursor && !this->m_hwCursorTexture) {
-        this->m_d3dDevice->CreateTexture(32, 32, 1, 0, D3DFMT_A8R8G8B8, D3DPOOL_MANAGED, &this->m_hwCursorTexture, nullptr);
+        this->m_d3dDevice->CreateTexture(32, 32, 1, 0, D3DFMT_A8R8G8B8, D3DPOOL_SYSTEMMEM, &this->m_hwCursorTexture, nullptr);
 
         if (this->m_hwCursorTexture) {
             this->m_hwCursorTexture->GetSurfaceLevel(0, &this->m_hwCursorBitmap);
@@ -474,18 +483,16 @@ bool CGxDeviceD3d9Ex::QueryGetParam(CGxQuery* query, EGxQueryParam param, uint32
 
 // VERIFY: 1721b50d manual
 // OFFSET: 0x006A0AA0
-int32_t CGxDeviceD3d9Ex::ILoadD3dLib(HINSTANCE& d3dLib, LPDIRECT3D9& d3d) {
+int32_t CGxDeviceD3d9Ex::ILoadD3dLib(HINSTANCE& d3dLib, LPDIRECT3D9EX& d3d) {
     d3dLib = nullptr;
     d3d = nullptr;
     d3dLib = LoadLibraryA("d3d9.dll");
 
     if (d3dLib) {
-        Direct3DCreate9Proc d3dCreateProc = reinterpret_cast<Direct3DCreate9Proc>(GetProcAddress(d3dLib, "Direct3DCreate9"));
+        Direct3DCreate9ExProc d3dCreateProc = reinterpret_cast<Direct3DCreate9ExProc>(GetProcAddress(d3dLib, "Direct3DCreate9Ex"));
 
         if (d3dCreateProc) {
-            d3d = d3dCreateProc(D3D_SDK_VERSION);
-
-            if (d3d) {
+            if (SUCCEEDED(d3dCreateProc(D3D_SDK_VERSION, &d3d)) && d3d) {
                 return 1;
             }
 
@@ -521,12 +528,11 @@ void CGxDeviceD3d9Ex::ISetWindowFocus(int32_t focus) {
 // VERIFY: 19cbc2ae manual
 // OFFSET: 0x0069FB00
 LPDIRECT3DVERTEXBUFFER9 CGxDeviceD3d9Ex::ICreateD3dVB(EGxPoolUsage usage, uint32_t size) {
-    D3DPOOL d3dPool = D3DPOOL_MANAGED;
+    D3DPOOL d3dPool = D3DPOOL_DEFAULT;
     DWORD d3dUsage = D3DUSAGE_WRITEONLY | (this->m_d3dIsHwDevice ? 0 : D3DUSAGE_SOFTWAREPROCESSING);
 
     if (usage == GxPoolUsage_Stream || usage == GxPoolUsage_Dynamic) {
         d3dUsage |= D3DUSAGE_DYNAMIC;
-        d3dPool = D3DPOOL_DEFAULT;
     }
 
     LPDIRECT3DVERTEXBUFFER9 vertexBuffer = nullptr;
@@ -701,7 +707,7 @@ void CGxDeviceD3d9Ex::ISceneEnd() {
     for (CGxTex* texId = this->m_texDestroyList.Head(); !this->m_texDestroyList.IsEnd(texId); texId = next) {
         next = this->m_texDestroyList.RawNext(texId);
 
-        if (this->m_texCacheUsed < this->m_texCacheSize) {
+        if (this->m_texCacheUsed <= this->m_texCacheSize) {
             break;
         }
 
@@ -712,7 +718,8 @@ void CGxDeviceD3d9Ex::ISceneEnd() {
     for (CGxTex* texId = this->m_texCacheList.Head(); !this->m_texCacheList.IsEnd(texId); texId = next) {
         next = this->m_texCacheList.RawNext(texId);
 
-        if (this->m_texCacheUsed < this->m_texCacheSize) {
+        // ScenePresent advances the frame before ending the rendered scene.
+        if (this->m_texCacheUsed <= this->m_texCacheSize || static_cast<uint32_t>(this->m_frameCount) - texId->m_lastUsedFrame <= 1) {
             break;
         }
 
@@ -2253,7 +2260,13 @@ void CGxDeviceD3d9Ex::ISetPresentParms(D3DPRESENT_PARAMETERS& d3dpp, const CGxFo
     }
 
     if (format.m_multisampleCount <= 1) {
-        d3dpp.Flags = D3DPRESENTFLAG_LOCKABLE_BACKBUFFER;
+        if (format.m_window && this->m_allowFlipEx) {
+            d3dpp.SwapEffect = D3DSWAPEFFECT_FLIPEX;
+            d3dpp.BackBufferCount = d3dpp.BackBufferCount < 2 ? 2 : d3dpp.BackBufferCount;
+        } else {
+            d3dpp.Flags = D3DPRESENTFLAG_LOCKABLE_BACKBUFFER;
+        }
+
         return;
     }
 
@@ -2530,6 +2543,25 @@ void CGxDeviceD3d9Ex::ISetCaps(const CGxFormat& format) {
     this->m_caps.unk_0138 = this->m_caps.m_shaderTargets[GxSh_Pixel] != 4;
 }
 
+HRESULT CGxDeviceD3d9Ex::ICreateD3dDeviceAPI(const CGxFormat& format, DWORD behaviorFlags, D3DPRESENT_PARAMETERS& parameters) {
+    this->ISetPresentParms(parameters, format);
+    D3DDISPLAYMODEEX displayMode = FullScreenDisplayMode(parameters);
+    HRESULT result = this->m_d3d->CreateDeviceEx(D3DADAPTER_DEFAULT, D3DDEVTYPE_HAL, this->m_hwnd, behaviorFlags,
+        &parameters, parameters.Windowed ? nullptr : &displayMode, &this->m_d3dDevice);
+
+    if (FAILED(result) && parameters.SwapEffect == D3DSWAPEFFECT_FLIPEX) {
+        CGxDevice::Log("D3D9Ex flip presentation unavailable (0x%08x); retrying DISCARD.", result);
+        this->m_allowFlipEx = false;
+        this->ISetPresentParms(parameters, format);
+        displayMode = FullScreenDisplayMode(parameters);
+        result = this->m_d3d->CreateDeviceEx(D3DADAPTER_DEFAULT, D3DDEVTYPE_HAL, this->m_hwnd, behaviorFlags,
+            &parameters, parameters.Windowed ? nullptr : &displayMode, &this->m_d3dDevice);
+    }
+
+    this->m_flipEx = SUCCEEDED(result) && parameters.SwapEffect == D3DSWAPEFFECT_FLIPEX;
+    return result;
+}
+
 // VERIFY: 5091454f manual
 // OFFSET: 0x006A1080
 int32_t CGxDeviceD3d9Ex::ICreateD3dDevice(const CGxFormat& format) {
@@ -2582,11 +2614,10 @@ int32_t CGxDeviceD3d9Ex::ICreateD3dDevice(const CGxFormat& format) {
     this->m_d3dIsHwDevice = hwTnL;
 
     D3DPRESENT_PARAMETERS d3dpp;
-    this->ISetPresentParms(d3dpp, format);
 
     DWORD behaviorFlags = hwTnL ? D3DCREATE_HARDWARE_VERTEXPROCESSING | D3DCREATE_PUREDEVICE | D3DCREATE_FPU_PRESERVE : D3DCREATE_SOFTWARE_VERTEXPROCESSING | D3DCREATE_FPU_PRESERVE;
 
-    if (FAILED(this->m_d3d->CreateDevice(D3DADAPTER_DEFAULT, D3DDEVTYPE_HAL, this->m_hwnd, behaviorFlags, &d3dpp, &this->m_d3dDevice))) {
+    if (FAILED(this->ICreateD3dDeviceAPI(format, behaviorFlags, d3dpp))) {
         this->m_d3dDevice = nullptr;
         return 0;
     }
@@ -2608,6 +2639,7 @@ int32_t CGxDeviceD3d9Ex::ICreateD3dDevice(const CGxFormat& format) {
     this->m_devAdapterFormat = d3dpp.BackBufferFormat;
     this->m_context = 1;
     this->m_devDepthFormat = d3dpp.AutoDepthStencilFormat;
+    this->ILogPresentParameters(d3dpp);
 
     this->ISetCaps(format);
     this->Log(this->m_caps);
@@ -2678,22 +2710,7 @@ int32_t CGxDeviceD3d9Ex::DeviceWM(EGxWM wm, uintptr_t param1, uintptr_t param2) 
             this->DeviceSetDefWindow(*reinterpret_cast<const CRect*>(param1));
 
             if (this->m_d3dDevice && this->m_context) {
-                this->IReleaseD3dResources(0);
-
-                D3DPRESENT_PARAMETERS d3dpp;
-                this->ISetPresentParms(d3dpp, this->m_format);
-
-                if (this->m_d3dDevice->Reset(&d3dpp) == D3D_OK) {
-                    this->IStateSetD3DDefaults();
-                    this->ISetWindowFocus(1);
-                    this->m_context = 1;
-                    this->m_intF5C = 0;
-                    this->NotifyOnDeviceRestored();
-                    this->m_viewportDirty = 1;
-                    break;
-                }
-
-                this->m_context = 0;
+                this->IResetD3dDevice();
             }
 
             this->m_viewportDirty = 1;
@@ -2726,6 +2743,9 @@ int32_t CGxDeviceD3d9Ex::DeviceWM(EGxWM wm, uintptr_t param1, uintptr_t param2) 
 // VERIFY: 0945f992 auto
 // OFFSET: 0x006A1F40
 void CGxDeviceD3d9Ex::IDestroyD3d() {
+    this->ISceneEnd();
+    this->m_context = 0;
+
     for (uint32_t i = 0; i < 2; i++) {
         if (CGxDevice::s_uiVertexShader[i]) {
             g_theGxDevicePtr->ShaderDestroy(CGxDevice::s_uiVertexShader[i]);
@@ -2991,24 +3011,66 @@ void CGxDeviceD3d9Ex::ITexMarkAsUpdated(CGxTex* texId) {
     }
 }
 
+int32_t CGxDeviceD3d9Ex::IResetD3dDevice() {
+    int32_t inScene = this->m_inScene;
+
+    this->ISceneEnd();
+    this->IReleaseD3dResources(0);
+    this->m_context = 0;
+
+    D3DPRESENT_PARAMETERS d3dpp;
+    this->ISetPresentParms(d3dpp, this->m_format);
+    D3DDISPLAYMODEEX displayMode = FullScreenDisplayMode(d3dpp);
+    HRESULT result = this->m_d3dDevice->ResetEx(&d3dpp, d3dpp.Windowed ? nullptr : &displayMode);
+
+    if (FAILED(result) && d3dpp.SwapEffect == D3DSWAPEFFECT_FLIPEX) {
+        CGxDevice::Log("D3D9Ex flip presentation reset failed (0x%08x); retrying DISCARD.", result);
+        this->m_allowFlipEx = false;
+        this->ISetPresentParms(d3dpp, this->m_format);
+        displayMode = FullScreenDisplayMode(d3dpp);
+        result = this->m_d3dDevice->ResetEx(&d3dpp, d3dpp.Windowed ? nullptr : &displayMode);
+    }
+
+    if (FAILED(result)) {
+        return 0;
+    }
+
+    this->m_flipEx = d3dpp.SwapEffect == D3DSWAPEFFECT_FLIPEX;
+    this->ILogPresentParameters(d3dpp);
+    this->m_context = 1;
+    this->IStateSetD3DDefaults();
+    this->ISetWindowFocus(1);
+    this->m_intF5C = 0;
+    this->m_d3dStereoDirty = 1;
+    this->m_viewportDirty = 1;
+    this->NotifyOnDeviceRestored();
+
+    if (inScene) {
+        this->ShaderConstantsClear();
+
+        if (this->m_d3dDevice->BeginScene() == D3D_OK) {
+            this->m_inScene = 1;
+        }
+    }
+
+    return 1;
+}
+
 // VERIFY: b1734758 auto
 // OFFSET: 0x006A73E0
 void CGxDeviceD3d9Ex::ISceneBegin() {
+    if (!this->m_d3dDevice) {
+        return;
+    }
+
     if (!this->m_context) {
-        if (this->m_d3dDevice->TestCooperativeLevel() == D3DERR_DEVICENOTRESET) {
-            this->IReleaseD3dResources(0);
+        HRESULT state = this->m_d3dDevice->CheckDeviceState(this->m_hwnd);
 
-            D3DPRESENT_PARAMETERS d3dpp;
-            this->ISetPresentParms(d3dpp, this->m_format);
-
-            if (this->m_d3dDevice->Reset(&d3dpp) == D3D_OK) {
-                this->IStateSetD3DDefaults();
-                this->ISetWindowFocus(1);
-                this->m_context = 1;
-                this->m_intF5C = 0;
-                this->m_d3dStereoDirty = 1;
-                this->NotifyOnDeviceRestored();
-            }
+        if (state == D3D_OK || state == S_PRESENT_MODE_CHANGED) {
+            this->IResetD3dDevice();
+        } else if (state == D3DERR_DEVICEHUNG || state == D3DERR_DEVICEREMOVED || state == D3DERR_DRIVERINTERNALERROR) {
+            CGxFormat format = this->m_format;
+            this->DeviceSetFormat(format);
         }
 
         if (!this->m_context) {
@@ -3020,6 +3082,37 @@ void CGxDeviceD3d9Ex::ISceneBegin() {
 
     if (this->m_d3dDevice->BeginScene() == D3D_OK) {
         this->m_inScene = 1;
+    }
+}
+
+DWORD CGxDeviceD3d9Ex::IGetPresentFlags() const {
+    return this->m_flipEx && !this->m_format.m_vsync ? D3DPRESENT_FORCEIMMEDIATE : 0;
+}
+
+void CGxDeviceD3d9Ex::ILogPresentParameters(D3DPRESENT_PARAMETERS parameters) {
+    IDirect3DSwapChain9* chain = nullptr;
+
+    if (SUCCEEDED(this->m_d3dDevice->GetSwapChain(0, &chain))) {
+        chain->GetPresentParameters(&parameters);
+        chain->Release();
+    }
+
+    CGxDevice::Log("D3D9Ex presentation: windowed=%u interval=0x%08x swap=%u flags=0x%08x buffers=%u presentFlags=0x%08x fullscreenHz=%u fixLag=%u maxFPS=%u maxFPSBk=%u",
+        parameters.Windowed, parameters.PresentationInterval, parameters.SwapEffect, parameters.Flags,
+        parameters.BackBufferCount, this->IGetPresentFlags(), parameters.FullScreen_RefreshRateInHz, this->m_format.m_fixLag,
+        GxGetMaxFPS(), GxGetMaxFPSBk());
+
+    D3DDISPLAYMODEEX desktop = {};
+    desktop.Size = sizeof(desktop);
+    MONITORINFOEXA monitor = {};
+    monitor.cbSize = sizeof(monitor);
+    HMONITOR adapterMonitor = this->m_d3d->GetAdapterMonitor(D3DADAPTER_DEFAULT);
+    GetMonitorInfoA(adapterMonitor, &monitor);
+
+    if (SUCCEEDED(this->m_d3d->GetAdapterDisplayModeEx(D3DADAPTER_DEFAULT, &desktop, nullptr))) {
+        CGxDevice::Log("D3D9Ex desktop: monitor=%s mode=%ux%u@%uHz windowOnAdapterMonitor=%u",
+            monitor.szDevice, desktop.Width, desktop.Height, desktop.RefreshRate,
+            MonitorFromWindow(this->m_hwnd, MONITOR_DEFAULTTONEAREST) == adapterMonitor);
     }
 }
 
@@ -3041,19 +3134,14 @@ void CGxDeviceD3d9Ex::ScenePresent() {
                     OsSleep(0);
                 }
             } else {
-                LPDIRECT3DSURFACE9 backBuffer;
+                LPDIRECT3DSURFACE9 readback = this->IGetReadbackSurface();
 
-                if (SUCCEEDED(this->m_d3dDevice->GetBackBuffer(0, 0, D3DBACKBUFFER_TYPE_MONO, &backBuffer))) {
-                    D3DSURFACE_DESC desc;
-                    backBuffer->GetDesc(&desc);
-
+                if (readback) {
                     D3DLOCKED_RECT lockedRect;
 
-                    if (SUCCEEDED(backBuffer->LockRect(&lockedRect, nullptr, D3DLOCK_READONLY))) {
-                        backBuffer->UnlockRect();
+                    if (SUCCEEDED(readback->LockRect(&lockedRect, nullptr, D3DLOCK_READONLY))) {
+                        readback->UnlockRect();
                     }
-
-                    backBuffer->Release();
                 }
             }
         }
@@ -3064,8 +3152,12 @@ void CGxDeviceD3d9Ex::ScenePresent() {
 
         this->WaitForFPSCap();
 
-        if (FAILED(this->m_d3dDevice->Present(nullptr, nullptr, nullptr, nullptr))) {
+        HRESULT result = this->m_d3dDevice->PresentEx(nullptr, nullptr, nullptr, nullptr, this->IGetPresentFlags());
+
+        if (FAILED(result) || result == S_PRESENT_MODE_CHANGED) {
             this->m_context = 0;
+        } else if (result == S_PRESENT_OCCLUDED) {
+            OsSleep(20);
         }
 
         if (this->m_d3dStereoHandle && this->m_d3dStereoDirty) {
@@ -3254,6 +3346,9 @@ LRESULT CALLBACK CGxDeviceD3d9Ex::WindowProcD3d(HWND hwnd, UINT message, WPARAM 
         case WM_ACTIVATE:
             if (LOWORD(wparam) == WA_INACTIVE) {
                 if (!device->IDevIsWindowed()) {
+                    // d3d9ex doesn't minimize fullscreen on focus loss, window stays topmost after alt-tab
+                    ShowWindow(hwnd, SW_MINIMIZE);
+
                     CRect rect;
                     rect.minY = 0.0f;
                     rect.minX = 0.0f;
@@ -3461,27 +3556,58 @@ void CGxDeviceD3d9Ex::LogCrashInfo(char* buffer, uint32_t size) {
 
 // VERIFY: 43218ef5 manual
 // OFFSET: 0x006A12D0
-void CGxDeviceD3d9Ex::ICreateReadbackSurface() {
+LPDIRECT3DSURFACE9 CGxDeviceD3d9Ex::IGetReadbackSurface() {
+    LPDIRECT3DSURFACE9 source = nullptr;
+
+    if (FAILED(this->m_d3dDevice->GetBackBuffer(0, 0, D3DBACKBUFFER_TYPE_MONO, &source))) {
+        return nullptr;
+    }
+
+    D3DSURFACE_DESC desc;
+
+    if (FAILED(source->GetDesc(&desc))) {
+        source->Release();
+        return nullptr;
+    }
+
     if (this->m_surface3B44) {
-        return;
-    }
+        D3DSURFACE_DESC cached;
 
-    const CRect& window = this->DeviceDefWindow();
-    D3DFORMAT format;
-
-    if (this->m_format.m_window) {
-        D3DDISPLAYMODE displayMode;
-
-        if (SUCCEEDED(this->m_d3d->GetAdapterDisplayMode(0, &displayMode))) {
-            format = displayMode.Format;
-        } else {
-            format = this->m_desktopDisplayMode.Format;
+        if (FAILED(this->m_surface3B44->GetDesc(&cached)) || cached.Width != desc.Width || cached.Height != desc.Height || cached.Format != desc.Format) {
+            this->m_surface3B44->Release();
+            this->m_surface3B44 = nullptr;
         }
-    } else {
-        format = s_GxFormatToD3dFormat[this->m_format.m_colorFormat];
     }
 
-    this->m_d3dDevice->CreateRenderTarget(static_cast<UINT>(window.maxX - window.minX), static_cast<UINT>(window.maxY - window.minY), format, D3DMULTISAMPLE_NONE, 0, TRUE, &this->m_surface3B44, nullptr);
+    if (!this->m_surface3B44 && FAILED(this->m_d3dDevice->CreateOffscreenPlainSurface(desc.Width, desc.Height, desc.Format, D3DPOOL_SYSTEMMEM, &this->m_surface3B44, nullptr))) {
+        source->Release();
+        return nullptr;
+    }
+
+    if (desc.MultiSampleType != D3DMULTISAMPLE_NONE) {
+        LPDIRECT3DSURFACE9 resolved = nullptr;
+        HRESULT result = this->m_d3dDevice->CreateRenderTarget(desc.Width, desc.Height, desc.Format, D3DMULTISAMPLE_NONE, 0, FALSE, &resolved, nullptr);
+
+        if (SUCCEEDED(result)) {
+            result = this->m_d3dDevice->StretchRect(source, nullptr, resolved, nullptr, D3DTEXF_NONE);
+        }
+
+        source->Release();
+
+        if (FAILED(result)) {
+            if (resolved) {
+                resolved->Release();
+            }
+
+            return nullptr;
+        }
+
+        source = resolved;
+    }
+
+    HRESULT result = this->m_d3dDevice->GetRenderTargetData(source, this->m_surface3B44);
+    source->Release();
+    return SUCCEEDED(result) ? this->m_surface3B44 : nullptr;
 }
 
 // VERIFY: fe072290 manual
@@ -3624,32 +3750,21 @@ void CGxDeviceD3d9Ex::DeviceReadPixels(CiRect& rect, TSGrowableArray<CImVector>&
     uint32_t count = width * height;
     pixels.SetCount(count);
 
-    LPDIRECT3DSURFACE9 surface = nullptr;
-    HRESULT result;
-
-    if (this->m_format.m_multisampleCount < 2) {
-        result = this->m_d3dDevice->GetBackBuffer(0, 0, D3DBACKBUFFER_TYPE_MONO, &surface);
-    } else {
-        RECT sourceRect = { rect.minX, rect.minY, static_cast<LONG>(width), static_cast<LONG>(height) };
-
-        this->ICreateReadbackSurface();
-
-        if (!this->m_surface3B44) {
-            return;
-        }
-
-        result = this->m_d3dDevice->StretchRect(this->m_defColorSurface, &sourceRect, this->m_surface3B44, &sourceRect, D3DTEXF_NONE);
-        surface = this->m_surface3B44;
-        surface->AddRef();
-    }
-
-    if (FAILED(result)) {
+    if (!width || !height) {
         return;
     }
 
+    LPDIRECT3DSURFACE9 surface = this->IGetReadbackSurface();
+
+    if (!surface) {
+        return;
+    }
+
+    surface->AddRef();
+    RECT sourceRect = { rect.minX, rect.minY, rect.maxX, rect.maxY };
     D3DLOCKED_RECT lockedRect;
 
-    if (SUCCEEDED(surface->LockRect(&lockedRect, nullptr, D3DLOCK_READONLY))) {
+    if (SUCCEEDED(surface->LockRect(&lockedRect, &sourceRect, D3DLOCK_READONLY))) {
         D3DSURFACE_DESC desc;
         surface->GetDesc(&desc);
 
@@ -3914,10 +4029,15 @@ CGxDevice* CreateCGxDeviceD3d9Ex() {
 // VERIFY: cec88572 manual
 // OFFSET: 0x006A1A90
 CGxDeviceD3d9Ex::CGxDeviceD3d9Ex() : m_desktopDisplayMode() {
+    this->m_allowFlipEx = true;
+    this->m_flipEx = false;
     this->m_d3dStereoConvergence = 1.0f;
     this->m_d3dStereoSeparation = 25.0f;
     this->m_api = GxApi_D3d9Ex;
     this->m_hwnd = nullptr;
+    this->m_hwndClass = 0;
+    this->m_ownhwnd = 0;
+    this->m_inScene = 0;
     this->m_d3dLib = nullptr;
     this->m_d3d = nullptr;
     this->m_d3dDevice = nullptr;
@@ -3948,6 +4068,7 @@ CGxDeviceD3d9Ex::CGxDeviceD3d9Ex() : m_desktopDisplayMode() {
 
     this->m_texCacheUsed = 0;
     this->m_texCacheSize = 0x1000000;
+
     this->DeviceCreatePools();
     this->DeviceCreateStreamBufs();
 }
@@ -4007,12 +4128,32 @@ void CGxDeviceD3d9Ex::TexSetCacheSize(uint32_t size) {
 
 // VERIFY: 28216b7e manual
 // OFFSET: 0x006A60C0
-LPDIRECT3DTEXTURE9 CGxDeviceD3d9Ex::ITexGetScratch(EGxTexFormat format) {
+LPDIRECT3DTEXTURE9 CGxDeviceD3d9Ex::ITexGetScratch(EGxTexFormat format, uint32_t width, uint32_t height) {
     CGxDeviceD3d9Ex::ScratchTexture& scratch = this->m_scratchTextures[format];
     LPDIRECT3DTEXTURE9 texture = scratch.m_textures[scratch.m_index];
 
+    if (texture) {
+        D3DSURFACE_DESC desc;
+
+        if (SUCCEEDED(texture->GetLevelDesc(0, &desc))) {
+            if (width <= desc.Width && height <= desc.Height) {
+                return texture;
+            }
+
+            width = width > desc.Width ? width : desc.Width;
+            height = height > desc.Height ? height : desc.Height;
+        }
+
+        texture->Release();
+        texture = nullptr;
+        scratch.m_textures[scratch.m_index] = nullptr;
+    }
+
+    width = width > 1024 ? width : 1024;
+    height = height > 1024 ? height : 1024;
+
     if (!texture) {
-        if (FAILED(this->m_d3dDevice->CreateTexture(1024, 1024, 10, 0, s_GxTexFmtToD3dFmt[format], D3DPOOL_SYSTEMMEM, &texture, nullptr))) {
+        if (FAILED(this->m_d3dDevice->CreateTexture(width, height, 0, 0, s_GxTexFmtToD3dFmt[format], D3DPOOL_SYSTEMMEM, &texture, nullptr))) {
             return nullptr;
         }
 
@@ -4027,9 +4168,15 @@ LPDIRECT3DTEXTURE9 CGxDeviceD3d9Ex::ITexGetScratch(EGxTexFormat format) {
 // VERIFY: 9294c6f5 auto
 // OFFSET: 0x006A6130
 void CGxDeviceD3d9Ex::ITexUploadRect(CGxTex* texId, uint32_t face, uint32_t level, const RECT& rect, const void* bits, uint32_t pitch) {
+    uint32_t width;
+    uint32_t height;
+    uint32_t baseMip;
+    uint32_t mipCount;
+    this->ITexWHDStartEnd(texId, width, height, baseMip, mipCount);
+
     LPDIRECT3DSURFACE9 scratchSurface = nullptr;
     LPDIRECT3DSURFACE9 surface = nullptr;
-    LPDIRECT3DTEXTURE9 scratch = this->ITexGetScratch(texId->m_format);
+    LPDIRECT3DTEXTURE9 scratch = this->ITexGetScratch(texId->m_format, width, height);
 
     if (scratch && SUCCEEDED(scratch->GetSurfaceLevel(level, &scratchSurface))) {
         HRESULT result;
@@ -4073,9 +4220,13 @@ void CGxDeviceD3d9Ex::ITexUploadAll(CGxTex* texId) {
     uint32_t mipCount;
     this->ITexWHDStartEnd(texId, width, height, baseMip, mipCount);
 
-    int32_t compressed = texId->m_dataFormat >= GxTex_Dxt1 && texId->m_dataFormat <= GxTex_Dxt5;
+    uint32_t blockSize = s_texFormatBlockSize[texId->m_format];
     const uint8_t* bits = static_cast<const uint8_t*>(texId->m_apiSpecificData2);
     uint32_t faceCount = texId->m_target == GxTex_CubeMap ? GxTexCubeFaces_Last : 1;
+
+    if (!bits || !texId->m_apiSpecificData) {
+        return;
+    }
 
     for (uint32_t face = 0; face < faceCount; face++) {
         uint32_t mipWidth = width;
@@ -4089,31 +4240,10 @@ void CGxDeviceD3d9Ex::ITexUploadAll(CGxTex* texId) {
             rect.right = mipWidth;
             rect.bottom = mipHeight;
 
-            if (compressed) {
-                rect.left = 0;
-                rect.top = 0;
-                rect.right = (mipWidth + 3) & ~3;
-                rect.bottom = (mipHeight + 3) & ~3;
-            }
-
             uint32_t pitch = GxCalcTexelStrideInBytes(texId->m_format, mipWidth);
-            const uint8_t* src;
+            this->ITexUploadRect(texId, face, level, rect, bits, pitch);
 
-            if (compressed) {
-                src = bits + s_texFormatBytesPerBlock[texId->m_dataFormat] * (rect.left >> 2) + pitch * (rect.top >> 2);
-            } else {
-                src = bits + ((rect.left * s_texFormatBitDepth[texId->m_dataFormat]) >> 3) + rect.top * pitch;
-            }
-
-            if (texId->m_apiSpecificData) {
-                this->ITexUploadRect(texId, face, level, rect, src, pitch);
-            }
-
-            if (compressed) {
-                bits += pitch * (mipHeight >> 2);
-            } else {
-                bits += mipHeight * pitch;
-            }
+            bits += pitch * ((mipHeight + blockSize - 1) / blockSize);
 
             mipHeight >>= 1;
             mipWidth >>= 1;
@@ -4143,6 +4273,7 @@ void CGxDeviceD3d9Ex::ITexUpload(CGxTex* texId) {
     this->ITexWHDStartEnd(texId, width, height, baseMip, mipCount);
 
     int32_t compressed = texId->m_dataFormat >= GxTex_Dxt1 && texId->m_dataFormat <= GxTex_Dxt5;
+    uint32_t blockSize = s_texFormatBlockSize[texId->m_format];
     uint32_t faceCount = texId->m_target == GxTex_CubeMap ? GxTexCubeFaces_Last : 1;
     uint8_t* bits = static_cast<uint8_t*>(texId->m_apiSpecificData2);
 
@@ -4152,6 +4283,7 @@ void CGxDeviceD3d9Ex::ITexUpload(CGxTex* texId) {
         uint32_t level = 0;
 
         for (uint32_t mip = baseMip; mip != mipCount; mip++, level++) {
+            uint32_t pitch = GxCalcTexelStrideInBytes(texId->m_format, mipWidth);
             texels = nullptr;
             texId->m_userFunc(GxTex_Latch, mipWidth, mipHeight, face, mip, texId->m_userArg, texelStrideInBytes, texels);
 
@@ -4169,6 +4301,21 @@ void CGxDeviceD3d9Ex::ITexUpload(CGxTex* texId) {
                     rect.right = (rect.right + 3) & ~3;
                 }
 
+                rect.left = rect.left < 0 ? 0 : rect.left;
+                rect.top = rect.top < 0 ? 0 : rect.top;
+                rect.right = rect.right > static_cast<LONG>(mipWidth) ? mipWidth : rect.right;
+                rect.bottom = rect.bottom > static_cast<LONG>(mipHeight) ? mipHeight : rect.bottom;
+
+                if (rect.right <= rect.left || rect.bottom <= rect.top) {
+                    if (bits) {
+                        bits += pitch * ((mipHeight + blockSize - 1) / blockSize);
+                    }
+
+                    mipWidth = mipWidth > 1 ? mipWidth >> 1 : 1;
+                    mipHeight = mipHeight > 1 ? mipHeight >> 1 : 1;
+                    continue;
+                }
+
                 const uint8_t* src = static_cast<const uint8_t*>(texels);
 
                 if (!texId->m_flags.m_bit15) {
@@ -4181,14 +4328,7 @@ void CGxDeviceD3d9Ex::ITexUpload(CGxTex* texId) {
                     }
                 }
 
-                uint32_t pitch = GxCalcTexelStrideInBytes(texId->m_format, mipWidth);
-                uint8_t* dest;
-
-                if (compressed) {
-                    dest = bits + s_texFormatBytesPerBlock[texId->m_dataFormat] * (rect.left >> 2) + pitch * (rect.top >> 2);
-                } else {
-                    dest = bits + ((rect.left * s_texFormatBitDepth[texId->m_dataFormat]) >> 3) + rect.top * pitch;
-                }
+                uint8_t* dest = bits + s_texFormatBytesPerBlock[texId->m_format] * (rect.left / blockSize) + pitch * (rect.top / blockSize);
 
                 C2iVector size;
                 size.x = rect.right - rect.left;
@@ -4198,12 +4338,10 @@ void CGxDeviceD3d9Ex::ITexUpload(CGxTex* texId) {
                 if (texId->m_apiSpecificData) {
                     this->ITexUploadRect(texId, face, level, rect, dest, pitch);
                 }
+            }
 
-                if (compressed) {
-                    bits += pitch * (mipHeight >> 2);
-                } else {
-                    bits += mipHeight * pitch;
-                }
+            if (bits) {
+                bits += pitch * ((mipHeight + blockSize - 1) / blockSize);
             }
 
             mipHeight >>= 1;
@@ -4363,7 +4501,7 @@ void CGxDeviceD3d9Ex::ITexAcquire(CGxTex* texId) {
         return;
     }
 
-    for (CGxTex* cached = this->m_texCacheList.Head(); cached && cached->m_lastUsedFrame != static_cast<uint32_t>(this->m_frameCount); cached = this->m_texCacheList.Next(cached)) {
+    for (CGxTex* cached = this->m_texCacheList.Head(); cached && static_cast<uint32_t>(this->m_frameCount) - cached->m_lastUsedFrame > 1; cached = this->m_texCacheList.Next(cached)) {
         if (texId->m_flags.m_filter == cached->m_flags.m_filter && texId->m_flags.m_renderTarget == cached->m_flags.m_renderTarget && texId->m_format == cached->m_format && texId->m_target == cached->m_target && texId->m_width == cached->m_width && texId->m_height == cached->m_height) {
             this->ITexTakeD3dTexture(texId, cached);
             return;
@@ -4373,7 +4511,11 @@ void CGxDeviceD3d9Ex::ITexAcquire(CGxTex* texId) {
     while (true) {
         CGxTex* oldest = this->m_texCacheList.Head();
 
-        if (!oldest || oldest->m_lastUsedFrame == static_cast<uint32_t>(this->m_frameCount)) {
+        if (!oldest || static_cast<uint32_t>(this->m_frameCount) - oldest->m_lastUsedFrame <= 1) {
+            if (this->ITexAllocD3dTexture(texId)) {
+                return;
+            }
+
             this->ITexUnlinkBound();
             int32_t found = this->ITexEvictFor(texId, size);
             this->ITexLinkBound();

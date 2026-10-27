@@ -22,12 +22,6 @@
 // STATIC: 0x009F1028
 static const uint16_t s_pixelFormatBytesPerBlock[NUM_PIXEL_FORMATS] = { 8, 16, 0, 0, 0, 0, 0, 16, 0, 0 };
 
-// STATIC: 0x009F103C
-static const uint16_t s_texFormatBitDepth[GxTexFormats_Last] = { 0, 32, 32, 16, 16, 16, 4, 8, 8, 16, 32, 32, 32 };
-
-// STATIC: 0x009F1058
-static const uint16_t s_texFormatBytesPerBlock[GxTexFormats_Last] = { 0, 0, 0, 0, 0, 0, 8, 16, 16, 0, 0, 0, 0 };
-
 // STATIC: 0x009F1074
 static const int32_t s_pixelFormatToMipBitsCache[NUM_PIXEL_FORMATS] = { -1, -1, -1, 0, 0, 0, -1, -1, -1, 1 };
 
@@ -84,6 +78,8 @@ static int32_t s_atlasEnable;
 
 // STATIC: 0x00B49C90
 static MipBits* s_mipBits;
+
+static uint32_t s_mipBitsSize;
 
 // STATIC: 0x00B49C94
 static int32_t s_pumping;
@@ -204,34 +200,58 @@ int32_t TextureBuildAliasPath(char* buffer, const char* fileName) {
     return 1;
 }
 
-// VERIFY: a6ae9dde manual
-// OFFSET: 0x004B5280
-MipBits* GetDefaultTexture(uint32_t width, uint32_t height) {
+static void EnsureMipBitsCapacity(PIXEL_FORMAT format, uint32_t width, uint32_t height) {
+    uint32_t size = MippedImgCalcSize(format, width, height) + 16;
+
+    if (size > s_mipBitsSize) {
+        MipBits* images = static_cast<MipBits*>(SMemAlloc(size, __FILE__, __LINE__, 0));
+
+        if (s_mipBits) {
+            SMemFree(s_mipBits, __FILE__, __LINE__, 0);
+        }
+
+        s_mipBits = images;
+        s_mipBitsSize = size;
+    }
+}
+
+static MipBits* GetDefaultTexture(uint32_t width, uint32_t height, PIXEL_FORMAT format) {
+    EnsureMipBitsCapacity(format, width, height);
     MipBits* images = s_mipBits;
-    MipBits* level = images;
+    uint32_t levelCount = CalcLevelCount(width, height);
+    MippedImgSet(format, width, height, images);
 
-    MippedImgSet(PIXEL_ARGB8888, width, height, images);
+    for (uint32_t level = 0; level < levelCount; level++) {
+        uint32_t size = CalcLevelSize(level, width, height, format);
+        uint8_t* bits = reinterpret_cast<uint8_t*>(images[level].m_mip[0]);
+        memset(bits, 0xFF, size);
 
-    while (width > 1 || height > 1) {
-        memset(level->m_mip[0], 0xFF, 4 * height * width);
-        level++;
-        width = width >> 1 ? width >> 1 : 1;
-        height >>= 1;
+        if (format == PIXEL_DXT1 || format == PIXEL_DXT3 || format == PIXEL_DXT5) {
+            uint32_t blockSize = s_pixelFormatBytesPerBlock[format];
 
-        if (!height) {
-            height = 1;
+            for (uint32_t offset = 0; offset < size; offset += blockSize) {
+                memset(bits + offset + blockSize - 4, 0, 4);
+            }
         }
     }
 
     return images;
 }
 
+// VERIFY: a6ae9dde manual
+// OFFSET: 0x004B5280
+MipBits* GetDefaultTexture(uint32_t width, uint32_t height) {
+    return GetDefaultTexture(width, height, PIXEL_ARGB8888);
+}
+
 // VERIFY: ec360367 manual
 // OFFSET: 0x004B5300
 void AsyncTextureFailureCallback(CTexture* texture) {
     CAsyncObject* object = texture->m_asyncObject;
+    texture->m_asyncObject = nullptr;
     s_asyncLoadBufferUsed -= object->m_size;
     void* buffer = object->m_buffer;
+    object->m_userArg = nullptr;
     AsyncFileReadDestroyObject(object);
     SMemFree(buffer, __FILE__, __LINE__, 0);
 }
@@ -537,16 +557,7 @@ void ResolveMipLevel(EGxTexCommand command, uint32_t width, uint32_t height, uin
 
         case GxTex_Latch:
             if (s_pumping) {
-                if (atlas->m_format < GxTex_Dxt1 || atlas->m_format > GxTex_Dxt5) {
-                    texelStrideInBytes = (s_texFormatBitDepth[texture->m_dataFormat] * atlas->m_width) >> 3;
-                } else {
-                    texelStrideInBytes = (atlas->m_width >> 2) * s_texFormatBytesPerBlock[atlas->m_dataFormat];
-
-                    if (texelStrideInBytes < s_texFormatBytesPerBlock[texture->m_dataFormat]) {
-                        texelStrideInBytes = s_texFormatBytesPerBlock[texture->m_dataFormat];
-                    }
-                }
-
+                texelStrideInBytes = GxCalcTexelStrideInBytes(texture->m_dataFormat, atlas->m_width);
                 texels = s_mipBits[level].m_mip[0];
             }
 
@@ -715,6 +726,10 @@ int32_t TextureLoadBlpMips(char* fileName, char* extension, int32_t flags, MipBi
         *pixelFormat = pixels;
     }
 
+    if (images == &s_mipBits) {
+        EnsureMipBitsCapacity(pixels, imageWidth, imageHeight);
+    }
+
     if (!image.LockChain(pixels, *images, bestMip)) {
         return 0;
     }
@@ -751,23 +766,23 @@ void UpdateBlpTextureAsync(EGxTexCommand command, uint32_t width, uint32_t heigh
     switch (command) {
         case GxTex_Lock:
             if (!s_pumping && !LoadBlpWithAlias(texture->m_filename, texture->m_flags & 2, &s_mipBits)) {
-                GetDefaultTexture(width, height);
+                PIXEL_FORMAT format = PIXEL_ARGB8888;
+
+                for (uint32_t i = 0; i < NUM_PIXEL_FORMATS; i++) {
+                    if (s_pixelFormatToGxTexFormat[i] == texture->m_dataFormat) {
+                        format = static_cast<PIXEL_FORMAT>(i);
+                        break;
+                    }
+                }
+
+                GetDefaultTexture(texture->m_gxTexTarget == GxTex_CubeMap ? 6 * width : width, height, format);
                 GetGlobalStatusObj().Add(STATUS_ERROR, "Texture %s not loaded -- replaced with default.\n", texture->m_filename);
             }
 
             break;
 
         case GxTex_Latch: {
-            if (texture->m_gxTexFormat < GxTex_Dxt1 || texture->m_gxTexFormat > GxTex_Dxt5) {
-                texelStrideInBytes = (width * s_texFormatBitDepth[texture->m_dataFormat]) >> 3;
-            } else {
-                texelStrideInBytes = (width >> 2) * s_texFormatBytesPerBlock[texture->m_dataFormat];
-
-                if (texelStrideInBytes < s_texFormatBytesPerBlock[texture->m_dataFormat]) {
-                    texelStrideInBytes = s_texFormatBytesPerBlock[texture->m_dataFormat];
-                }
-            }
-
+            texelStrideInBytes = GxCalcTexelStrideInBytes(texture->m_dataFormat, width);
             const uint8_t* bits = reinterpret_cast<const uint8_t*>(s_mipBits[level].m_mip[0]);
             texels = bits;
 
@@ -1187,6 +1202,18 @@ CGxTex* TextureAllocGxTex(EGxTexTarget target, uint32_t width, uint32_t height, 
 // VERIFY: ead404bb manual
 // OFFSET: 0x004B6920
 void FillInSolidTexture(const CImVector& color, CTexture* texture) {
+    texture->m_flags = 0;
+
+    if (texture->m_gxTex) {
+        TextureFreeGxTex(texture->m_gxTex, texture->m_filename);
+        texture->m_gxTex = nullptr;
+    }
+
+    if (texture->m_atlas) {
+        CTextureAtlas::Free(texture->m_atlas, texture);
+        texture->m_atlas = nullptr;
+    }
+
     texture->m_gxTex = TextureAllocGxTex(GxTex_2d, 8, 8, 0, GxTex_Argb8888, CGxTexFlags(), reinterpret_cast<void*>(static_cast<uintptr_t>(*reinterpret_cast<const uint32_t*>(&color))), GxuUpdateSingleColorTexture, GxTex_Argb8888, texture->m_filename);
 
     if (color.a < 0xFE) {
@@ -1201,7 +1228,6 @@ void FillInSolidTexture(const CImVector& color, CTexture* texture) {
     texture->m_gxWidth = 8;
     texture->m_gxHeight = 8;
     texture->m_gxTexFlags = CGxTexFlags();
-    SStrCopy(texture->m_filename, "SolidTexture", 260);
 }
 
 // VERIFY: f77dd4dd manual
@@ -1642,6 +1668,10 @@ int32_t LoadTgaMips(char* fileName, char* extension, int32_t flags, MipBits** im
     uint32_t imageHeight = image.Height();
     uint32_t mipCount = TextureCalcMipCount(imageWidth, imageHeight);
 
+    if (images == &s_mipBits) {
+        EnsureMipBitsCapacity(PIXEL_ARGB8888, imageWidth, imageHeight);
+    }
+
     if (*images) {
         MippedImgSet(PIXEL_ARGB8888, imageWidth, imageHeight, *images);
     } else {
@@ -1710,7 +1740,7 @@ void UpdateTgaTexture(EGxTexCommand command, uint32_t width, uint32_t height, ui
                 *extension = '\0';
 
                 if (!result) {
-                    GetDefaultTexture(width, height);
+                    GetDefaultTexture(texture->m_gxTexTarget == GxTex_CubeMap ? 6 * width : width, height);
                     GetGlobalStatusObj().Add(STATUS_ERROR, "Texture %s not loaded -- replaced with default.\n", texture->m_filename);
                 }
             }
@@ -1794,6 +1824,7 @@ int32_t PumpBlpTextureAsync(CTexture* texture, void* data) {
     EGxTexFormat gxTexFormat;
     TextureGetTextureFormats(pixelFormat, gxTexFormat, static_cast<PIXEL_FORMAT>(image.m_header.m_preferredFormat), image.m_header.m_alphaSize);
 
+    EnsureMipBitsCapacity(pixelFormat, width, height);
     s_pumping = 1;
 
     if (!image.LockChain2(texture->m_filename, pixelFormat, s_mipBits, texture->m_bestMip, 1)) {
@@ -1855,7 +1886,9 @@ int32_t PumpBlpTextureAsync(CTexture* texture, void* data) {
 // VERIFY: 85a7ce70 manual
 // OFFSET: 0x004B7E80
 void AsyncTextureSuccessCallback(CTexture* texture) {
-    if (!PumpBlpTextureAsync(texture, texture->m_asyncObject->m_buffer)) {
+    CAsyncObject* object = texture->m_asyncObject;
+
+    if (!PumpBlpTextureAsync(texture, object->m_buffer)) {
         if (!texture->m_status.IsEmpty()) {
             SysMsgAdd(&texture->m_status);
         }
@@ -1863,12 +1896,11 @@ void AsyncTextureSuccessCallback(CTexture* texture) {
         FillInSolidTexture(*reinterpret_cast<const CImVector*>(&s_defaultColor), texture);
     }
 
-    SFileCloseFile(texture->m_asyncObject->m_file);
-    texture->m_asyncObject->m_file = nullptr;
-    s_asyncLoadBufferUsed -= texture->m_asyncObject->m_size;
-    SMemFree(texture->m_asyncObject->m_buffer, __FILE__, __LINE__, 0);
-    AsyncFileReadDestroyObject(texture->m_asyncObject);
     texture->m_asyncObject = nullptr;
+    s_asyncLoadBufferUsed -= object->m_size;
+    SMemFree(object->m_buffer, __FILE__, __LINE__, 0);
+    object->m_userArg = nullptr;
+    AsyncFileReadDestroyObject(object);
 }
 
 // VERIFY: f4bfd60d manual
@@ -1890,7 +1922,7 @@ int32_t AsyncTextureStatus() {
 // VERIFY: f4a9a3e6 manual
 // OFFSET: 0x004B7F80
 void TextureInitialize() {
-    s_mipBits = static_cast<MipBits*>(SMemAlloc(MippedImgCalcSize(PIXEL_ARGB8888, 1024, 1024), __FILE__, __LINE__, 0));
+    EnsureMipBitsCapacity(PIXEL_ARGB8888, 1024, 1024);
     AsyncFileReadAddPollHandler(AsyncTextureHandler);
     AsyncFileReadAddStatusHandler(AsyncTextureStatus);
     s_currentTime = OsGetAsyncTimeMs();
@@ -2041,6 +2073,7 @@ void TextureDestroy() {
     s_gxTexCacheFree.Clear();
     SMemFree(s_mipBits, __FILE__, __LINE__, 0);
     s_mipBits = nullptr;
+    s_mipBitsSize = 0;
 
     for (int32_t x = 0; x < 6; x++) {
         for (int32_t y = 0; y < 6; y++) {

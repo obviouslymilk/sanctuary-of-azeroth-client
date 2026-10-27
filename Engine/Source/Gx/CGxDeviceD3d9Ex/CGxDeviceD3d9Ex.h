@@ -215,8 +215,8 @@ class CGxDeviceD3d9Ex : public CGxDevice {
     /* 396E */ uint16_t unused_396E;
     /* 3970 */ int32_t m_ownhwnd;
     /* 3974 */ HINSTANCE m_d3dLib;
-    /* 3978 */ LPDIRECT3D9 m_d3d;
-    /* 397C */ LPDIRECT3DDEVICE9 m_d3dDevice;
+    /* 3978 */ LPDIRECT3D9EX m_d3d;
+    /* 397C */ LPDIRECT3DDEVICE9EX m_d3dDevice;
     /* 3980 */ D3DCAPS9 m_d3dCaps;
     /* 3AB0 */ int32_t m_d3dIsHwDevice;
     /* 3AB4 */ int32_t m_d3dNVAPI;
@@ -253,6 +253,8 @@ class CGxDeviceD3d9Ex : public CGxDevice {
     /* 3C44 */ uint32_t m_texCacheSize;
     /* 3C48 */ uint32_t m_deviceStates [DeviceStates_Last];
     /* 3F20 */ bool m_texEnabled [8];
+    bool m_allowFlipEx;
+    bool m_flipEx;
 
     virtual void ITexMarkAsUpdated(CGxTex* texId);
     virtual void IRsSendToHw(EGxRenderState which);
@@ -331,8 +333,8 @@ class CGxDeviceD3d9Ex : public CGxDevice {
     static const D3DDECLUSAGE s_gxAttribToD3dAttribUsage[GxVAs_Last];
     static const uint32_t s_gxAttribToD3dAttribUsageIndex[GxVAs_Last];
 
-    static int32_t ILoadD3dLib(HINSTANCE& d3dLib, LPDIRECT3D9& d3d);
-    static void IUnloadD3dLib(HINSTANCE& d3dLib, LPDIRECT3D9& d3d);
+    static int32_t ILoadD3dLib(HINSTANCE& d3dLib, LPDIRECT3D9EX& d3d);
+    static void IUnloadD3dLib(HINSTANCE& d3dLib, LPDIRECT3D9EX& d3d);
     static LRESULT CALLBACK WindowProcD3d(HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam);
 
     CGxDeviceD3d9Ex();
@@ -340,7 +342,7 @@ class CGxDeviceD3d9Ex : public CGxDevice {
     void DsSet(EDeviceState state, uint32_t value);
     int32_t ICheckDepthStencilFormat(D3DFORMAT format);
     void ICreateDepthStencilSurface(uint32_t width, uint32_t height);
-    void ICreateReadbackSurface();
+    LPDIRECT3DSURFACE9 IGetReadbackSurface();
     void IBindPixelShader(CGxShader* shader);
     void IBindVertexShader(CGxShader* shader);
     char* IBufLock(CGxBuf* buf);
@@ -349,6 +351,7 @@ class CGxDeviceD3d9Ex : public CGxDevice {
     int32_t CreatePoolAPI(CGxPool* pool);
     int32_t ICreateD3d();
     int32_t ICreateD3dDevice(const CGxFormat& format);
+    HRESULT ICreateD3dDeviceAPI(const CGxFormat& format, DWORD behaviorFlags, D3DPRESENT_PARAMETERS& parameters);
     LPDIRECT3DINDEXBUFFER9 ICreateD3dIB(EGxPoolUsage usage, uint32_t size);
     LPDIRECT3DVERTEXBUFFER9 ICreateD3dVB(EGxPoolUsage usage, uint32_t size);
     int32_t ICreateWindow(CGxFormat& format);
@@ -359,6 +362,9 @@ class CGxDeviceD3d9Ex : public CGxDevice {
     void IReleaseD3dResources(int32_t freeTextures);
     void IReleaseD3dShaders(int32_t freeShaders);
     void IReleaseD3dVertexDecl();
+    int32_t IResetD3dDevice();
+    DWORD IGetPresentFlags() const;
+    void ILogPresentParameters(D3DPRESENT_PARAMETERS parameters);
     void ISceneBegin();
     void ISceneEnd();
     void ISetAlphaOp(uint32_t tmu, uint32_t op);
@@ -388,7 +394,7 @@ class CGxDeviceD3d9Ex : public CGxDevice {
     int32_t ITexAllocD3dTexture(CGxTex* texId);
     void ITexCreate(CGxTex* texId);
     int32_t ITexEvictFor(CGxTex* texId, uint32_t size);
-    LPDIRECT3DTEXTURE9 ITexGetScratch(EGxTexFormat format);
+    LPDIRECT3DTEXTURE9 ITexGetScratch(EGxTexFormat format, uint32_t width, uint32_t height);
     void ITexLinkBound();
     void ITexReleaseD3dTexture(CGxTex* texId);
     void ITexTakeD3dTexture(CGxTex* dest, CGxTex* source);

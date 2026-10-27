@@ -439,10 +439,10 @@ int32_t CGxDevice::D3dAdapterFormats(TSGrowableArray<CGxFormat>& formats) {
 // OFFSET: 0x0068C250
 int32_t CGxDevice::D3d9ExAdapterFormats(TSGrowableArray<CGxFormat>& formats) {
     HINSTANCE d3dLib = nullptr;
-    LPDIRECT3D9 d3d = nullptr;
+    LPDIRECT3D9EX d3d = nullptr;
 
     if (!CGxDeviceD3d9Ex::ILoadD3dLib(d3dLib, d3d)) {
-        return 0;
+        return CGxDevice::D3dAdapterFormats(formats);
     }
 
     for (uint32_t i = 0; i < 3; i++) {

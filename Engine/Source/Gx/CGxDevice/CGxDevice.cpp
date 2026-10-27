@@ -1905,6 +1905,14 @@ void CGxDevice::ITexWHDStartEnd(CGxTex* texId, uint32_t& width, uint32_t& height
     width >>= baseMip;
     height >>= baseMip;
 
+    if (!width) {
+        width = 1;
+    }
+
+    if (!height) {
+        height = 1;
+    }
+
     if (texId->m_flags.m_forceMipTracking) {
         mipCount = baseMip + 1;
     }
@@ -1983,37 +1991,32 @@ void CGxDevice::Light(uint32_t index, CGxLight& light) {
 // VERIFY: ef4fa9c6 auto
 // OFFSET: 0x00683210
 uint32_t CGxDevice::ITexBitsSize(CGxTex* texId, uint32_t width, uint32_t height) {
-    if (width == 0xFFFFFFFF) {
-        width = texId->m_width;
+    uint32_t mipWidth;
+    uint32_t mipHeight;
+    uint32_t baseMip;
+    uint32_t mipCount;
+    this->ITexWHDStartEnd(texId, mipWidth, mipHeight, baseMip, mipCount);
 
-        if (texId->m_flags.m_filter > GxTex_Linear) {
-            width >>= this->m_baseMipLevel;
-        }
+    if (width == 0xFFFFFFFF) {
+        width = mipWidth;
     }
 
     if (height == 0xFFFFFFFF) {
-        height = texId->m_height;
-
-        if (texId->m_flags.m_filter > GxTex_Linear) {
-            height >>= this->m_baseMipLevel;
-        }
+        height = mipHeight;
     }
 
     uint32_t blockSize = s_texFormatBlockSize[texId->m_format];
-    uint32_t size = s_texFormatBytesPerBlock[texId->m_format] * (blockSize + width - 1) / blockSize * ((blockSize + height - 1) / blockSize);
+    uint32_t size = 0;
 
-    if (texId->m_flags.m_filter > GxTex_Linear) {
-        while (width != 1 || height != 1) {
-            if (width > 1) {
-                width >>= 1;
-            }
+    for (uint32_t mip = baseMip; mip < mipCount; mip++) {
+        size += s_texFormatBytesPerBlock[texId->m_format] * ((blockSize + width - 1) / blockSize) * ((blockSize + height - 1) / blockSize);
 
-            if (height > 1) {
-                height >>= 1;
-            }
+        if (width > 1) {
+            width >>= 1;
+        }
 
-            blockSize = s_texFormatBlockSize[texId->m_format];
-            size += s_texFormatBytesPerBlock[texId->m_format] * (blockSize + width - 1) / blockSize * ((blockSize + height - 1) / blockSize);
+        if (height > 1) {
+            height >>= 1;
         }
     }
 

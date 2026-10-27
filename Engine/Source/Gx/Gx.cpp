@@ -115,7 +115,7 @@ static int (*s_drawListSorters[GxuSorts_Last])(const void*, const void*) = { Dra
 // VERIFY: 0b88acbc auto
 // OFFSET: 0x008C8DE0
 EGxApi GxDefaultApi() {
-    return GxApi_D3d9;
+    return GxApi_D3d9Ex;
 }
 
 // VERIFY: cef2b995 auto
@@ -196,16 +196,22 @@ CGxDevice* CreateGxDevice(EGxApi api, GxWindowProc windowProc, const CGxFormat& 
             break;
 
         default:
-            device = g_theGxDevicePtr;
-            break;
+            return nullptr;
     }
 
-    if (device->DeviceCreate(windowProc, format)) {
+    if (device && device->DeviceCreate(windowProc, format)) {
         return g_theGxDevicePtr;
     }
 
     if (g_theGxDevicePtr) {
         delete g_theGxDevicePtr;
+    }
+
+    g_theGxDevicePtr = nullptr;
+
+    if (api == GxApi_D3d9Ex) {
+        CGxDevice::Log("CreateGxDevice(): D3D9Ex initialization failed; falling back to D3D9.");
+        return CreateGxDevice(GxApi_D3d9, windowProc, format);
     }
 
     return nullptr;
