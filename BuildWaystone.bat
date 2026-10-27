@@ -15,7 +15,7 @@ git -C "%ROOT%" diff --quiet HEAD
 if errorlevel 1 echo WARNING: uncommitted changes, the zip will not match commit %HASH%
 
 if not exist "%VSWHERE%" goto :novs
-for /f "usebackq delims=" %%i in (`"%VSWHERE%" -latest -products * -version [17.0^,18.0^) -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath`) do set "VSDIR=%%i"
+for /f "usebackq delims=" %%i in (`"%VSWHERE%" -latest -products * -version [17.0^,19.0^) -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath`) do set "VSDIR=%%i"
 if not defined VSDIR goto :novs
 
 set "PATH=%ProgramFiles(x86)%\Microsoft Visual Studio\Installer;%PATH%"
@@ -53,7 +53,7 @@ echo ERROR: could not read the git commit hash
 exit /b 1
 
 :novs
-echo ERROR: Visual Studio 2022 with the C++ x64 tools was not found
+echo ERROR: Visual Studio 2022 or 2026 with the C++ x64 tools was not found
 exit /b 1
 
 :missing

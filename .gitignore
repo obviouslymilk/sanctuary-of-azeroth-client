@@ -410,3 +410,11 @@ FodyWeavers.xsd
 
 # Local Visual Studio CMake settings (absolute paths to re/tools)
 CMakeSettings.json
+
+# Agent tooling
+.agents/plans/**
+.claude/plans/**
+.claude/worktrees/**
+.claude/settings.local.json
+.claude/__pycache__
+CLAUDE.local.md

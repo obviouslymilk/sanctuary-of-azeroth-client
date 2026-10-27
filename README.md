@@ -99,6 +99,11 @@ logger off in `WowClient` with `-DWOWCLIENT_CRASH_LOG=OFF`.
 | `Tools/WowClient/` | The `WowClient` executable target |
 | `Tools/XvidDecoder/` | x64 movie decoder that replaces the original 32-bit `DivxDecoder.dll` |
 
+## Working with coding agents
+
+Agent instructions start at [AGENTS.md](AGENTS.md); the layout is explained in
+[.agents/docs/onboarding.md](.agents/docs/onboarding.md).
+
 ## Special thanks
 
 - [binana](https://github.com/thunderbrewhq/binana)
