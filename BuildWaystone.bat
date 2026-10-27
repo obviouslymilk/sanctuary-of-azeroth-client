@@ -36,11 +36,11 @@ if not exist "%BIN%\Win\XvidDecoder.dll" goto :missing
 
 if exist "%STAGE%" rmdir /s /q "%STAGE%"
 mkdir "%STAGE%"
-copy /y "%BIN%\Win\Wow64.exe" "%STAGE%\Waystone.exe" >nul
-copy /y "%BIN%\Win\Wow64.map" "%STAGE%\Waystone.map" >nul
+copy /y "%BIN%\Win\Wow64.exe" "%STAGE%\Game.exe" >nul
+copy /y "%BIN%\Win\Wow64.map" "%STAGE%\Game.map" >nul
 copy /y "%BIN%\Win\XvidDecoder.dll" "%STAGE%\XvidDecoder.dll" >nul
 
-set "ZIP=%BIN%\Waystone-%HASH%.zip"
+set "ZIP=%BIN%\Game-%HASH%.zip"
 powershell -NoProfile -Command "Compress-Archive -Path '%STAGE%\*' -DestinationPath '%ZIP%' -Force"
 if errorlevel 1 goto :fail
 rmdir /s /q "%STAGE%"
