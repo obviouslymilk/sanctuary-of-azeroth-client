@@ -1,0 +1,1 @@
+ cmake --build build/x64 --config Release --target WowClient --parallel
