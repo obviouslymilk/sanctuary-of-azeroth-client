@@ -83,6 +83,22 @@ if (WIN32 AND WOWDECOMP_ARCH_64)
     gx_d3d11_shader(Pixel UI 1)
     gx_d3d11_shader(Pixel Desaturate 1)
 
+    # world shaders, generated from the DX9 originals by Tools/Shaders/bls_to_hlsl.py
+    gx_d3d11_shader(Vertex Terrain 128)
+    gx_d3d11_shader(Pixel Terrain0 3)
+    gx_d3d11_shader(Pixel Terrain0_env 1)
+    gx_d3d11_shader(Pixel Terrain1 32)
+    gx_d3d11_shader(Vertex DetailDoodad 6)
+    gx_d3d11_shader(Pixel DetailDoodad 8)
+    gx_d3d11_shader(Vertex vsLiquidWater 4)
+    gx_d3d11_shader(Vertex vsLiquidWaterNoSpec 4)
+    gx_d3d11_shader(Vertex vsLiquidMagma 1)
+    gx_d3d11_shader(Pixel psLiquidWater 1)
+    gx_d3d11_shader(Pixel psLiquidWaterNoSpec 1)
+    gx_d3d11_shader(Pixel psLiquidMagma 1)
+    gx_d3d11_shader(Vertex WaterRipples 1)
+    gx_d3d11_shader(Pixel WaterRipples 1)
+
     set(GX_SHADER_TABLE ${CMAKE_CURRENT_BINARY_DIR}/GxEmbeddedShaderTable.cpp)
     add_custom_command(
         OUTPUT ${GX_SHADER_TABLE}

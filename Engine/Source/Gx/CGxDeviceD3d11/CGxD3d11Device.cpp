@@ -503,8 +503,9 @@ void CGxDeviceD3d11::ISetCaps(const CGxFormat& format) {
     CGxCaps& caps = this->m_caps;
 
     caps.m_numTmus = 8;
-    caps.m_pixelCenterOnEdge = 0;
-    caps.m_texelCenterOnEdge = 0;
+    // D3D11 has no half pixel offset, so the UI must not add the D3D9 one
+    caps.m_pixelCenterOnEdge = 1;
+    caps.m_texelCenterOnEdge = 1;
     caps.m_numStreams = 16;
     caps.m_streamOffset = 1;
     caps.m_maxIndex = 0xFFFFF;
@@ -533,8 +534,9 @@ void CGxDeviceD3d11::ISetCaps(const CGxFormat& format) {
     caps.m_blendFactor = 1;
     caps.m_shaderAlphaRef = 1;
     caps.m_stereoAvailable = 0;
-    caps.unk_0134 = 1;
-    caps.unk_0138 = 1;
+    // world shaders blend the fog themselves (fog color in ps c2), like ps_3_0 on D3D9
+    caps.unk_0134 = 0;
+    caps.unk_0138 = 0;
 
     // 5 is vs_5_0 and 6 is ps_5_0 in the target name tables
     for (uint32_t i = 0; i < GxShTargets_Last; i++) {

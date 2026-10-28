@@ -1390,7 +1390,8 @@ void CWorld::LoadMap(const char* mapName, C3Vector* position, int32_t zoneID, in
 void CWorldScene::ApplyFogState() {
     DayNight::DNInfo* info = DayNight::GetInfo();
 
-    if (!g_theGxDevicePtr->Caps().m_shaderTargets[0]) {
+    // D3D11 has vertex shaders but M2 and WMO still go through the fixed function emulation
+    if (!g_theGxDevicePtr->Caps().m_shaderTargets[0] || g_theGxDevicePtr->DeviceApi() == GxApi_D3d11) {
         GxRsSet(GxRs_FogStart, info->m_fog.m_start);
         GxRsSet(GxRs_FogEnd, info->m_fog.m_end);
     }
@@ -1405,7 +1406,8 @@ void DayNight::Update(int32_t reset, const C3Vector* cameraPos) {
     DNInfo* info = DayNight::GetInfo();
     int32_t fogMode = static_cast<uint32_t>(g_theGxDevicePtr->Caps().m_shaderTargets[0]) > 1;
 
-    if (s_mapId < 530) {
+    // the emulation only knows linear fog, so D3D11 never uses the density curve
+    if (s_mapId < 530 || g_theGxDevicePtr->DeviceApi() == GxApi_D3d11) {
         fogMode = 0;
     }
 

@@ -20,3 +20,8 @@ float3 ApplyFog(float3 color, float distance) {
     float factor = saturate((fog.y - distance) * fog.w);
     return fog.z != 0.0f ? lerp(fogColor.rgb, color, factor) : color;
 }
+
+// DX9 cmp: per component, a >= 0 ? b : c
+float4 Cmp(float4 a, float4 b, float4 c) {
+    return float4(a.x >= 0.0f ? b.x : c.x, a.y >= 0.0f ? b.y : c.y, a.z >= 0.0f ? b.z : c.z, a.w >= 0.0f ? b.w : c.w);
+}

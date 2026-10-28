@@ -64,6 +64,10 @@ const char* const s_emuBuffer =
     "    float4 lightDiffuse[4];\n"
     "    float4 lightAmbient[4];\n"
     "    float4 lightAtt[4];\n"
+    "    row_major float4x4 world;\n"
+    "    float4 matSpecular;\n"
+    "    float4 lightSpec[4];\n"
+    "    float4 clipPlane[6];\n"
     "};\n";
 
 std::string BuildVertexSource(const CGxDeviceD3d11::EmuKey& key) {
@@ -91,6 +95,14 @@ std::string BuildVertexSource(const CGxDeviceD3d11::EmuKey& key) {
 
     src += "};\nstruct VsOut {\n    float4 position : SV_Position;\n    float4 color : COLOR0;\n";
 
+    if (key.m_specular) {
+        src += "    float3 specular : COLOR1;\n";
+    }
+
+    if (key.m_clipMask) {
+        src += "    float4 clip0 : SV_ClipDistance0;\n    float2 clip1 : SV_ClipDistance1;\n";
+    }
+
     for (uint32_t i = 0; i < key.m_stageCount; i++) {
         Append(src, "    float4 t%u : TEXCOORD%u;\n", i, i);
     }
@@ -100,6 +112,12 @@ std::string BuildVertexSource(const CGxDeviceD3d11::EmuKey& key) {
     src += "    float4 p = float4(i.pos.xyz, 1.0f);\n";
     src += "    o.position = mul(p, worldViewProj);\n";
     src += "    float3 viewPos = mul(p, worldView).xyz;\n";
+
+    if (key.m_clipMask) {
+        src += "    float4 wp = mul(p, world);\n";
+        src += "    o.clip0 = float4(dot(wp, clipPlane[0]), dot(wp, clipPlane[1]), dot(wp, clipPlane[2]), dot(wp, clipPlane[3]));\n";
+        src += "    o.clip1 = float2(dot(wp, clipPlane[4]), dot(wp, clipPlane[5]));\n";
+    }
     src += "    o.fogFactor = saturate((fog.y - abs(viewPos.z)) * fog.w);\n";
 
     if (UsesNormal(key)) {
@@ -119,6 +137,10 @@ std::string BuildVertexSource(const CGxDeviceD3d11::EmuKey& key) {
     if (key.m_lighting == Lighting_Off) {
         src += "    o.color = vcolor;\n";
     } else {
+        if (key.m_specular) {
+            src += "    float3 spec = float3(0.0f, 0.0f, 0.0f);\n    float3 eye = -normalize(viewPos);\n";
+        }
+
         src += key.m_materialFromColor ? "    float4 md = vcolor;\n" : "    float4 md = matDiffuse;\n";
         src += key.m_emissiveFromColor ? "    float3 lit = vcolor.rgb + md.rgb * ambient.rgb;\n" : "    float3 lit = matEmissive.rgb + md.rgb * ambient.rgb;\n";
 
@@ -138,10 +160,18 @@ std::string BuildVertexSource(const CGxDeviceD3d11::EmuKey& key) {
             }
 
             Append(src, "        lit += att * md.rgb * (lightAmbient[%u].rgb + lightDiffuse[%u].rgb * max(dot(n, l), 0.0f));\n", i, i);
+
+            if (key.m_specular) {
+                Append(src, "        float3 h = normalize(l + eye);\n        spec += att * lightSpec[%u].rgb * matSpecular.rgb * pow(max(dot(n, h), 0.0f), matSpecular.w) * (dot(n, l) > 0.0f ? 1.0f : 0.0f);\n", i);
+            }
             src += "    }\n";
         }
 
         src += "    o.color = float4(saturate(lit), md.a);\n";
+
+        if (key.m_specular) {
+            src += "    o.specular = saturate(spec);\n";
+        }
     }
 
     for (uint32_t i = 0; i < key.m_stageCount; i++) {
@@ -198,6 +228,10 @@ std::string BuildPixelSource(const CGxDeviceD3d11::EmuKey& key) {
 
     src += "struct PsIn {\n    float4 position : SV_Position;\n    float4 color : COLOR0;\n";
 
+    if (key.m_specular) {
+        src += "    float3 specular : COLOR1;\n";
+    }
+
     for (uint32_t i = 0; i < key.m_stageCount; i++) {
         Append(src, "    float4 t%u : TEXCOORD%u;\n", i, i);
     }
@@ -240,6 +274,10 @@ std::string BuildPixelSource(const CGxDeviceD3d11::EmuKey& key) {
         Append(src, "        float4 tx = tex%u.Sample(smp%u, uv);\n        float4 prev = cur;\n", i, i);
         Append(src, "        cur.rgb = %s;\n        cur.a = %s;\n", colorExpr[colorOp], alphaExpr[alphaOp]);
         src += "        cur = saturate(cur);\n    }\n";
+    }
+
+    if (key.m_specular) {
+        src += "    cur.rgb = saturate(cur.rgb + i.specular);\n";
     }
 
     src += "    if (fog.z != 0.0f) {\n        cur.rgb = lerp(fogColor.rgb, cur.rgb, i.fogFactor);\n    }\n";
@@ -294,6 +332,10 @@ void CGxDeviceD3d11::IEmuBuildKey(EmuKey& key) {
     }
 
     key.m_normalize = this->m_appRenderStates[GxRs_NormalizeNormals].m_value.m_data.u[0] != 0;
+    key.m_clipMask = static_cast<uint8_t>(this->m_appRenderStates[GxRs_ClipPlaneMask].m_value.m_data.u[0] & 0x3F);
+
+    // same condition as the D3D9 specular enable
+    key.m_specular = key.m_lighting == Lighting_On && key.m_lightMask && this->m_appRenderStates[GxRs_MatSpecular].m_value.m_data.u[0] && this->m_appRenderStates[GxRs_MatSpecularExp].m_value.m_data.f[0] > 0.0f;
 
     uint32_t stageCount = 0;
 
@@ -336,6 +378,7 @@ void CGxDeviceD3d11::IEmuUpdateConstants(const EmuKey& key) {
     C44Matrix worldView = world * view;
 
     CopyMatrix(constants.m_worldView, worldView);
+    CopyMatrix(constants.m_world, world);
     CopyMatrix(constants.m_worldViewProj, worldView * this->m_projNative);
 
     for (uint32_t i = 0; i < key.m_stageCount; i++) {
@@ -371,6 +414,17 @@ void CGxDeviceD3d11::IEmuUpdateConstants(const EmuKey& key) {
     UnpackColor(constants.m_matDiffuse, this->m_appRenderStates[GxRs_MatDiffuse].m_value.m_data.u[0]);
     UnpackColor(constants.m_matEmissive, this->m_appRenderStates[GxRs_MatEmissive].m_value.m_data.u[0]);
 
+    UnpackColor(constants.m_matSpecular, this->m_appRenderStates[GxRs_MatSpecular].m_value.m_data.u[0]);
+    constants.m_matSpecular[3] = this->m_appRenderStates[GxRs_MatSpecularExp].m_value.m_data.f[0];
+
+    for (uint32_t i = 0; i < 6; i++) {
+        const C4Plane& plane = this->m_clipPlane[i];
+        constants.m_clipPlane[i][0] = plane.n.x;
+        constants.m_clipPlane[i][1] = plane.n.y;
+        constants.m_clipPlane[i][2] = plane.n.z;
+        constants.m_clipPlane[i][3] = plane.d;
+    }
+
     float ambient = key.m_lighting == Lighting_AmbientOnly ? 1.0f : 0.0f;
     constants.m_ambient[0] = constants.m_ambient[1] = constants.m_ambient[2] = constants.m_ambient[3] = ambient;
 
@@ -401,6 +455,9 @@ void CGxDeviceD3d11::IEmuUpdateConstants(const EmuKey& key) {
             constants.m_lightAmbient[i][2] = light.m_ambColor.z;
             constants.m_lightAmbient[i][3] = light.m_linearAttenuation;
             constants.m_lightAtt[i][0] = light.m_quadraticAttenuation;
+            constants.m_lightSpec[i][0] = light.m_specColor.x;
+            constants.m_lightSpec[i][1] = light.m_specColor.y;
+            constants.m_lightSpec[i][2] = light.m_specColor.z;
             light.m_flags = 0;
         }
     }
@@ -457,6 +514,7 @@ bool CGxDeviceD3d11::IEmuBind(ID3D11VertexShader*& vs, ID3D11PixelShader*& ps, c
     EmuKey pixelKey;
     memset(&pixelKey, 0, sizeof(pixelKey));
     pixelKey.m_stageCount = key.m_stageCount;
+    pixelKey.m_specular = key.m_specular;
 
     for (uint32_t i = 0; i < key.m_stageCount; i++) {
         vertexKey.m_stages[i].m_colorOp = 0;

@@ -215,8 +215,10 @@ int32_t CShadowCache::ValidateShadowMode(EShadowMode mode) {
                     return depthFormat ? 1 : 0;
 
                 case GxApi_D3d10:
-                case GxApi_D3d11:
                     return depthFormat;
+
+                case GxApi_D3d11:
+                    return 0;
 
                 case GxApi_GLL:
                     if ((vertexTarget == 6 || vertexTarget == 10) && (pixelTarget == 12 || pixelTarget == 11)) {
@@ -242,8 +244,10 @@ int32_t CShadowCache::ValidateShadowMode(EShadowMode mode) {
                     return depthFormat ? 1 : 0;
 
                 case GxApi_D3d10:
-                case GxApi_D3d11:
                     return depthFormat;
+
+                case GxApi_D3d11:
+                    return 0;
 
                 default:
                     return 0;

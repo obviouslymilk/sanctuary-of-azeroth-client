@@ -42,6 +42,10 @@ class CGxDeviceD3d11 : public CGxDevice {
         float m_lightDiffuse[4][4];
         float m_lightAmbient[4][4];
         float m_lightAtt[4][4];
+        float m_world[16];
+        float m_matSpecular[4];
+        float m_lightSpec[4][4];
+        float m_clipPlane[6][4];
     };
 
     struct EmuVertexShader {
@@ -67,7 +71,9 @@ class CGxDeviceD3d11 : public CGxDevice {
         uint8_t m_materialFromColor;
         uint8_t m_emissiveFromColor;
         uint8_t m_stageCount;
-        uint8_t m_pad[3];
+        uint8_t m_clipMask;
+        uint8_t m_specular;
+        uint8_t m_pad;
         EmuStageKey m_stages[8];
     };
 

@@ -84,7 +84,7 @@ Liquid::IMaterial* Liquid::CMaterialBank::GetMaterial(uint32_t liquidType) {
             break;
 
         case 3:
-            if (shaders) {
+            if (shaders && g_theGxDevicePtr->DeviceApi() != GxApi_D3d11) {
                 material = Liquid::CMaterialProcWater::Create();
             } else {
                 material = Liquid::CMaterialProcWaterFFP::Create();

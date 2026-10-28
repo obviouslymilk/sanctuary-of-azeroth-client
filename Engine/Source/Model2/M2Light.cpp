@@ -425,7 +425,8 @@ void CM2Lighting::SetupGxFog() {
         return;
     }
 
-    if (!g_theGxDevicePtr->Caps().m_shaderTargets[0]) {
+    // D3D11 models use the fixed function emulation, which reads FogStart and FogEnd
+    if (!g_theGxDevicePtr->Caps().m_shaderTargets[0] || g_theGxDevicePtr->DeviceApi() == GxApi_D3d11) {
         GxRsSet(GxRs_FogStart, this->m_fogStart);
         GxRsSet(GxRs_FogEnd, this->m_fogEnd);
     }
