@@ -56,6 +56,14 @@ struct NETEVENTQUEUENODE : public TSLinkedNode<NETEVENTQUEUENODE> {
     /* 000C */ uint32_t m_timeReceived;
     /* 0010 */ void* m_data;
     /* 0014 */ uint32_t m_dataSize;
+
+    // Inlined in the original (NetInternal.h:47, see the node free loop at 0x00633470): the copied packet
+    // data is freed together with the node, so clearing the event queue does not leak it.
+    ~NETEVENTQUEUENODE() {
+        if (this->m_data) {
+            SMemFree(this->m_data, __FILE__, __LINE__, 0);
+        }
+    }
 };
 
 class NETEVENTQUEUE {
