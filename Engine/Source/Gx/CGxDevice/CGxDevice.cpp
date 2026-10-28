@@ -9,6 +9,9 @@
 #include "Engine/Source/Gx/Buffer.h"
 #include "Engine/Source/Gx/CGxDevice/CGxDevice.h"
 #include "Engine/Source/Gx/CGxDevice/CGxShader.h"
+#ifdef GX_HAS_D3D11
+#include "Engine/Source/Gx/CGxDeviceD3d11/GxEmbeddedShaders.h"
+#endif
 #include "Engine/Source/Gx/CGxPool.h"
 #include "Engine/Source/Gx/Gx.h"
 #include "Engine/Source/Os/Input.h"
@@ -1669,6 +1672,54 @@ void CGxDevice::DeviceCreatePools() {
     this->m_indexPool = this->PoolCreate(GxPoolTarget_Index, GxPoolUsage_Stream, s_streamIndexPoolSize, GxPoolHintBit_Unk3, "Stream_idx");
 }
 
+#ifdef GX_HAS_D3D11
+static bool LoadEmbeddedShaders(CGxShader** shaders, const char* filename, uint32_t permutations) {
+    for (uint32_t i = 0; i < g_gxEmbeddedShaderCount; i++) {
+        const GxEmbeddedShader& entry = g_gxEmbeddedShaders[i];
+
+        if (_stricmp(entry.m_path, filename)) {
+            continue;
+        }
+
+        const uint8_t* data = entry.m_data;
+        const uint8_t* end = data + entry.m_size;
+
+        // magic, version, unused
+        data += 12;
+
+        for (uint32_t perm = 0; perm < permutations; perm++) {
+            if (end - data < 16) {
+                return false;
+            }
+
+            CGxShader* shader = shaders[perm];
+            uint32_t codeSize;
+            memcpy(&shader->unk_003C, data, 4);
+            memcpy(&shader->unk_0040, data + 4, 4);
+            memcpy(&shader->unk_0044, data + 8, 2);
+            memcpy(&shader->unk_0046, data + 10, 2);
+            memcpy(&codeSize, data + 12, 4);
+            data += 16;
+
+            if (static_cast<uint32_t>(end - data) < codeSize) {
+                return false;
+            }
+
+            shader->m_code.SetCount(codeSize);
+            memcpy(shader->m_code.m_data, data, codeSize);
+            data += (codeSize + 3) & ~3u;
+
+            shader->m_loaded = 0;
+            shader->unused_0034 = 0;
+        }
+
+        return true;
+    }
+
+    return false;
+}
+#endif
+
 // VERIFY: 3ce50085 manual
 // OFFSET: 0x00684970
 void CGxDevice::IShaderLoad(CGxShader** shaders, EGxShTarget target, const char* path, const char* name, uint32_t permutations) {
@@ -1714,6 +1765,11 @@ void CGxDevice::IShaderLoad(CGxShader** shaders, EGxShTarget target, const char*
 
             SFileCloseFile(file);
         }
+#ifdef GX_HAS_D3D11
+        else if (LoadEmbeddedShaders(shaders, filename, permutations)) {
+            profile = 0;
+        }
+#endif
 
         if (target == GxSh_Vertex) {
             switch (profile) {

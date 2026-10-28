@@ -127,6 +127,11 @@ int32_t GxApiSupported(EGxApi api) {
         case GxApi_D3d9Ex:
             return 1;
 
+#ifdef GX_HAS_D3D11
+        case GxApi_D3d11:
+            return 1;
+#endif
+
         default:
             return 0;
     }
@@ -195,6 +200,13 @@ CGxDevice* CreateGxDevice(EGxApi api, GxWindowProc windowProc, const CGxFormat& 
             g_theGxDevicePtr = device;
             break;
 
+#ifdef GX_HAS_D3D11
+        case GxApi_D3d11:
+            device = CreateCGxDeviceD3d11();
+            g_theGxDevicePtr = device;
+            break;
+#endif
+
         default:
             return nullptr;
     }
@@ -208,6 +220,11 @@ CGxDevice* CreateGxDevice(EGxApi api, GxWindowProc windowProc, const CGxFormat& 
     }
 
     g_theGxDevicePtr = nullptr;
+
+    if (api == GxApi_D3d11) {
+        CGxDevice::Log("CreateGxDevice(): D3D11 initialization failed; falling back to D3D9Ex.");
+        return CreateGxDevice(GxApi_D3d9Ex, windowProc, format);
+    }
 
     if (api == GxApi_D3d9Ex) {
         CGxDevice::Log("CreateGxDevice(): D3D9Ex initialization failed; falling back to D3D9.");

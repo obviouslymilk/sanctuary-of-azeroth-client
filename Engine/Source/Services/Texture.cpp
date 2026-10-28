@@ -929,7 +929,7 @@ uint32_t TextureCacheGetMaxSize() {
         size = 0x2000000;
     }
 
-    return g_theGxDevicePtr->DeviceApi() == GxApi_D3d9Ex ? 0 : size;
+    return g_theGxDevicePtr->DeviceApi() == GxApi_D3d9Ex || g_theGxDevicePtr->DeviceApi() == GxApi_D3d11 ? 0 : size;
 }
 
 // VERIFY: 3db7e996 auto
@@ -1083,7 +1083,7 @@ void TextureSetCacheSize(int32_t size) {
         maxSize = 0x2000000;
     }
 
-    if (g_theGxDevicePtr->DeviceApi() == GxApi_D3d9Ex) {
+    if (g_theGxDevicePtr->DeviceApi() == GxApi_D3d9Ex || g_theGxDevicePtr->DeviceApi() == GxApi_D3d11) {
         maxSize = 0;
     }
 
