@@ -126,7 +126,8 @@ int32_t CM2Cache::Initialize(uint32_t flags) {
         SThread::Create(CM2Cache::ThreadProc, this, this->m_thread, const_cast<char*>("Model2"), 0);
     }
 
-    if (flags & 8) {
+    // DX11 has no M2 shaders, models go through the fixed function emulation
+    if ((flags & 8) && g_theGxDevicePtr->DeviceApi() != GxApi_D3d11) {
         int32_t vertexTarget = g_theGxDevicePtr->Caps().m_shaderTargets[0];
         int32_t pixelTarget = g_theGxDevicePtr->Caps().m_shaderTargets[4];
 
