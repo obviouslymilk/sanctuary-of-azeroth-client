@@ -1713,7 +1713,12 @@ void CWorld::Initialize() {
     CShaderEffectManager::AddEffectFile("MapObjU.wfx");
     CShaderEffectManager::AddEffectFile("Model2.wfx");
     CShaderEffectManager::AddEffectFile("Particle.wfx");
+
+    // the shadow map effect is the only one D3D11 runs as shaders
+    int32_t enableShaders = CShaderEffect::s_enableShaders;
+    CShaderEffect::s_enableShaders = enableShaders || g_theGxDevicePtr->DeviceApi() == GxApi_D3d11;
     CShaderEffectManager::AddEffectFile("ShadowMap.wfx");
+    CShaderEffect::s_enableShaders = enableShaders;
     CShadowQuery::Initialize();
     CWorldScene::Initialize();
     CMap::Initialize();

@@ -335,6 +335,8 @@ int32_t CShadowQuery::RenderCallback(CShadowCacheQueryData& data, int32_t band, 
         GxRenderTargetSet(GxBuffers_Depth, colorTarget, 0);
     }
 
+    bool d3d11 = g_theGxDevicePtr->DeviceApi() == GxApi_D3d11;
+    CShaderEffect::s_shadowPass = d3d11;
     g_theGxDevicePtr->RsPush();
     GxRsSet(GxRs_Culling, 0);
     CShaderEffect::SetTexMtx_Identity(0);
@@ -426,7 +428,11 @@ int32_t CShadowQuery::RenderCallback(CShadowCacheQueryData& data, int32_t band, 
             s_maxTexturedBatches = buffers.m_textured.m_count;
         }
 
-        CM2Model::RenderModelBatchesShadowMap(buffers.m_untextured, buffers.m_textured);
+        if (d3d11) {
+            CM2Model::RenderModelBatchesShadowMapD3d11(buffers.m_untextured, buffers.m_textured, texMatrix);
+        } else {
+            CM2Model::RenderModelBatchesShadowMap(buffers.m_untextured, buffers.m_textured);
+        }
     }
 
     g_theGxDevicePtr->RsPop();
@@ -436,6 +442,7 @@ int32_t CShadowQuery::RenderCallback(CShadowCacheQueryData& data, int32_t band, 
     g_theGxDevicePtr->DeviceSetRenderTarget(GxBuffers_Color, oldTarget, 0);
     g_theGxDevicePtr->XformSetProjection(projection);
     CShaderEffect::UpdateProjMatrix();
+    CShaderEffect::s_shadowPass = 0;
     return 1;
 }
 

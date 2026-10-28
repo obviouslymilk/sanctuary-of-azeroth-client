@@ -76,6 +76,25 @@ void CGxDeviceD3d11::IReleaseStateObjects() {
             this->m_samplerStates[i] = nullptr;
         }
     }
+
+    for (uint32_t i = 0; i < 2; i++) {
+        ID3D11DeviceChild* objects[3] = { this->m_shadowSamplers[i], this->m_clearBlend[i], this->m_clearDepth[i] };
+
+        for (ID3D11DeviceChild* object : objects) {
+            if (object) {
+                object->Release();
+            }
+        }
+
+        this->m_shadowSamplers[i] = nullptr;
+        this->m_clearBlend[i] = nullptr;
+        this->m_clearDepth[i] = nullptr;
+    }
+
+    if (this->m_clearRasterizer) {
+        this->m_clearRasterizer->Release();
+        this->m_clearRasterizer = nullptr;
+    }
 }
 
 void CGxDeviceD3d11::IRsSendToHw(EGxRenderState which) {
@@ -351,9 +370,8 @@ void CGxDeviceD3d11::IStateSyncScissorRect() {
     this->m_scissorRectDirty = 0;
 }
 
-void CGxDeviceD3d11::IXformSetViewport() {
+bool CGxDeviceD3d11::ICalcViewport(D3D11_VIEWPORT& viewport) {
     const CRect& window = this->DeviceCurWindow();
-    D3D11_VIEWPORT viewport;
 
     float x = static_cast<float>(static_cast<int32_t>(this->m_viewport.m_x.m_l * window.maxX + 0.5f));
     float y = static_cast<float>(static_cast<int32_t>((1.0f - this->m_viewport.m_y.m_h) * window.maxY + 0.5f));
@@ -368,7 +386,13 @@ void CGxDeviceD3d11::IXformSetViewport() {
         viewport.TopLeftY = static_cast<float>(static_cast<int32_t>(window.maxY * this->m_viewport.m_y.m_l));
     }
 
-    if (viewport.Width > 0.0f && viewport.Height > 0.0f) {
+    return viewport.Width > 0.0f && viewport.Height > 0.0f;
+}
+
+void CGxDeviceD3d11::IXformSetViewport() {
+    D3D11_VIEWPORT viewport;
+
+    if (this->ICalcViewport(viewport)) {
         this->m_d3dContext->RSSetViewports(1, &viewport);
     }
 

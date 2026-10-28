@@ -81,6 +81,12 @@ CGxDeviceD3d11::CGxDeviceD3d11() : m_deviceConstants() {
     this->m_psConstants = nullptr;
     this->m_deviceConstantsBuffer = nullptr;
     this->m_emuConstantsBuffer = nullptr;
+    this->m_clearConstants = nullptr;
+    this->m_clearRasterizer = nullptr;
+    memset(this->m_clearShaders, 0, sizeof(this->m_clearShaders));
+    memset(this->m_clearBlend, 0, sizeof(this->m_clearBlend));
+    memset(this->m_clearDepth, 0, sizeof(this->m_clearDepth));
+    memset(this->m_shadowSamplers, 0, sizeof(this->m_shadowSamplers));
     this->m_compilerModule = nullptr;
     this->m_d3dCompile = nullptr;
     this->m_curVertexShader = nullptr;
@@ -885,6 +891,12 @@ void CGxDeviceD3d11::IDestroyD3d() {
         g_theGxDevicePtr->ShaderDestroy(CGxDevice::s_uiPixelShader);
     }
 
+    for (uint32_t i = 0; i < 2; i++) {
+        if (this->m_clearShaders[i]) {
+            this->ShaderDestroy(this->m_clearShaders[i]);
+        }
+    }
+
     this->ICursorDestroy();
     this->ITexForceRecreation(1);
     this->IReleaseD3dShaders(1);
@@ -899,9 +911,9 @@ void CGxDeviceD3d11::IDestroyD3d() {
         this->m_fanIndexCount = 0;
     }
 
-    ID3D11Buffer** constants[4] = { &this->m_vsConstants, &this->m_psConstants, &this->m_deviceConstantsBuffer, &this->m_emuConstantsBuffer };
+    ID3D11Buffer** constants[5] = { &this->m_vsConstants, &this->m_psConstants, &this->m_deviceConstantsBuffer, &this->m_emuConstantsBuffer, &this->m_clearConstants };
 
-    for (uint32_t i = 0; i < 4; i++) {
+    for (uint32_t i = 0; i < 5; i++) {
         if (*constants[i]) {
             (*constants[i])->Release();
             *constants[i] = nullptr;
@@ -1219,8 +1231,125 @@ void CGxDeviceD3d11::ScenePresent() {
     }
 }
 
+// D3D11 clears ignore the viewport. D3D9 clears stay inside it, and the shadow maps rely on that to refresh one tile at a time.
+bool CGxDeviceD3d11::ISceneClearViewport(uint32_t mask, CImVector color) {
+    D3D11_VIEWPORT viewport;
+    const CRect& window = this->DeviceCurWindow();
+
+    if (!this->ICalcViewport(viewport)) {
+        return true;
+    }
+
+    if (viewport.TopLeftX <= 0.0f && viewport.TopLeftY <= 0.0f && viewport.Width >= window.maxX && viewport.Height >= window.maxY) {
+        return false;
+    }
+
+    bool clearColor = (mask & GxBufferBit_Color) && this->m_curRtv;
+    bool clearDepth = (mask & GxBufferBit_Depth) && this->m_curDsv;
+
+    if (!clearColor && !clearDepth) {
+        return true;
+    }
+
+    if (!this->m_clearShaders[0]) {
+        this->ShaderCreate(&this->m_clearShaders[0], GxSh_Vertex, "Shaders\\Vertex", "Clear", 1);
+        this->ShaderCreate(&this->m_clearShaders[1], GxSh_Pixel, "Shaders\\Pixel", "Clear", 1);
+    }
+
+    if (!this->m_clearConstants) {
+        D3D11_BUFFER_DESC bufferDesc;
+        memset(&bufferDesc, 0, sizeof(bufferDesc));
+        bufferDesc.ByteWidth = 16;
+        bufferDesc.Usage = D3D11_USAGE_DYNAMIC;
+        bufferDesc.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
+        bufferDesc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
+        this->m_d3dDevice->CreateBuffer(&bufferDesc, nullptr, &this->m_clearConstants);
+    }
+
+    if (!this->m_clearRasterizer) {
+        D3D11_RASTERIZER_DESC desc;
+        memset(&desc, 0, sizeof(desc));
+        desc.FillMode = D3D11_FILL_SOLID;
+        desc.CullMode = D3D11_CULL_NONE;
+        this->m_d3dDevice->CreateRasterizerState(&desc, &this->m_clearRasterizer);
+    }
+
+    if (!this->m_clearBlend[clearColor]) {
+        D3D11_BLEND_DESC desc;
+        memset(&desc, 0, sizeof(desc));
+        desc.RenderTarget[0].SrcBlend = D3D11_BLEND_ONE;
+        desc.RenderTarget[0].DestBlend = D3D11_BLEND_ZERO;
+        desc.RenderTarget[0].BlendOp = D3D11_BLEND_OP_ADD;
+        desc.RenderTarget[0].SrcBlendAlpha = D3D11_BLEND_ONE;
+        desc.RenderTarget[0].DestBlendAlpha = D3D11_BLEND_ZERO;
+        desc.RenderTarget[0].BlendOpAlpha = D3D11_BLEND_OP_ADD;
+        desc.RenderTarget[0].RenderTargetWriteMask = clearColor ? D3D11_COLOR_WRITE_ENABLE_ALL : 0;
+        this->m_d3dDevice->CreateBlendState(&desc, &this->m_clearBlend[clearColor]);
+    }
+
+    if (!this->m_clearDepth[clearDepth]) {
+        D3D11_DEPTH_STENCIL_DESC desc;
+        memset(&desc, 0, sizeof(desc));
+        desc.DepthEnable = clearDepth;
+        desc.DepthWriteMask = clearDepth ? D3D11_DEPTH_WRITE_MASK_ALL : D3D11_DEPTH_WRITE_MASK_ZERO;
+        desc.DepthFunc = D3D11_COMPARISON_ALWAYS;
+        this->m_d3dDevice->CreateDepthStencilState(&desc, &this->m_clearDepth[clearDepth]);
+    }
+
+    CGxShader* vertexShader = this->m_clearShaders[0];
+    CGxShader* pixelShader = this->m_clearShaders[1];
+
+    if (!vertexShader->m_loaded) {
+        this->IShaderCreate(vertexShader);
+    }
+
+    if (!pixelShader->m_loaded) {
+        this->IShaderCreate(pixelShader);
+    }
+
+    if (!vertexShader->m_valid || !pixelShader->m_valid || !this->m_clearConstants || !this->m_clearRasterizer || !this->m_clearBlend[clearColor] || !this->m_clearDepth[clearDepth]) {
+        return false;
+    }
+
+    D3D11_MAPPED_SUBRESOURCE mapped;
+
+    if (FAILED(this->m_d3dContext->Map(this->m_clearConstants, 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped))) {
+        return false;
+    }
+
+    float* values = static_cast<float*>(mapped.pData);
+    values[0] = color.r * oo255;
+    values[1] = color.g * oo255;
+    values[2] = color.b * oo255;
+    values[3] = color.a * oo255;
+    this->m_d3dContext->Unmap(this->m_clearConstants, 0);
+
+    const float blendFactor[4] = { 0.0f, 0.0f, 0.0f, 0.0f };
+    viewport.MinDepth = 0.0f;
+    viewport.MaxDepth = 1.0f;
+
+    this->m_d3dContext->OMSetBlendState(this->m_clearBlend[clearColor], blendFactor, 0xFFFFFFFF);
+    this->m_d3dContext->OMSetDepthStencilState(this->m_clearDepth[clearDepth], 0);
+    this->m_d3dContext->RSSetState(this->m_clearRasterizer);
+    this->m_d3dContext->RSSetViewports(1, &viewport);
+    this->m_d3dContext->IASetInputLayout(nullptr);
+    this->m_d3dContext->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+    this->m_d3dContext->VSSetShader(static_cast<ID3D11VertexShader*>(vertexShader->m_apiSpecific), nullptr, 0);
+    this->m_d3dContext->PSSetShader(static_cast<ID3D11PixelShader*>(pixelShader->m_apiSpecific), nullptr, 0);
+    this->m_d3dContext->PSSetConstantBuffers(2, 1, &this->m_clearConstants);
+    this->m_d3dContext->Draw(3, 0);
+
+    this->IStateReset();
+
+    return true;
+}
+
 void CGxDeviceD3d11::SceneClear(uint32_t mask, CImVector color) {
     if (!this->m_context) {
+        return;
+    }
+
+    if (this->ISceneClearViewport(mask, color)) {
         return;
     }
 

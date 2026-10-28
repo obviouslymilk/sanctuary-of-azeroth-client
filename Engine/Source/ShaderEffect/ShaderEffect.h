@@ -29,6 +29,7 @@ class CShaderEffect : public TSHashObject<CShaderEffect, HASHKEY_STRI> {
     public:
     static CShaderEffect* s_curEffect;
     static int32_t s_enableShaders;
+    static int32_t s_shadowPass;
     static C4Vector s_fogColorAlphaRef;
     static float s_fogMul;
     static C4Vector s_fogParams;
