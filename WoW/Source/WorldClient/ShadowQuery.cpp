@@ -337,6 +337,7 @@ int32_t CShadowQuery::RenderCallback(CShadowCacheQueryData& data, int32_t band, 
 
     bool d3d11 = g_theGxDevicePtr->DeviceApi() == GxApi_D3d11;
     CShaderEffect::s_shadowPass = d3d11;
+    int32_t useAlphaRef = CShaderEffect::s_useAlphaRef;
     g_theGxDevicePtr->RsPush();
     GxRsSet(GxRs_Culling, 0);
     CShaderEffect::SetTexMtx_Identity(0);
@@ -443,6 +444,7 @@ int32_t CShadowQuery::RenderCallback(CShadowCacheQueryData& data, int32_t band, 
     g_theGxDevicePtr->XformSetProjection(projection);
     CShaderEffect::UpdateProjMatrix();
     CShaderEffect::s_shadowPass = 0;
+    CShaderEffect::s_useAlphaRef = useAlphaRef;
     return 1;
 }
 
