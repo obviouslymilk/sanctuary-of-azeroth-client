@@ -25,9 +25,3 @@ float3 ApplyFog(float3 color, float distance) {
 float4 Cmp(float4 a, float4 b, float4 c) {
     return float4(a.x >= 0.0f ? b.x : c.x, a.y >= 0.0f ? b.y : c.y, a.z >= 0.0f ? b.z : c.z, a.w >= 0.0f ? b.w : c.w);
 }
-
-// DX9 hardware PCF: the sampler returns the filtered result of comparing coord.z with the stored depth.
-float4 ShadowCompare(Texture2D depthMap, SamplerComparisonState smp, float3 coord) {
-    float lit = depthMap.SampleCmpLevelZero(smp, coord.xy, coord.z);
-    return float4(lit, lit, lit, 1.0f);
-}

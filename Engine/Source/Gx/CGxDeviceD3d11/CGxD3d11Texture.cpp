@@ -402,37 +402,13 @@ ID3D11SamplerState* CGxDeviceD3d11::IGetSamplerState(const CGxTexFlags& flags) {
     return state;
 }
 
-// DX9 depth textures compare on sampling. A nearest filter gives one comparison, linear gives hardware PCF.
-ID3D11SamplerState* CGxDeviceD3d11::IGetShadowSamplerState(const CGxTexFlags& flags) {
-    uint32_t index = flags.m_filter == GxTex_Nearest ? 0 : 1;
-    ID3D11SamplerState*& state = this->m_shadowSamplers[index];
-
-    if (state) {
-        return state;
-    }
-
-    D3D11_SAMPLER_DESC desc;
-    memset(&desc, 0, sizeof(desc));
-    desc.Filter = index ? D3D11_FILTER_COMPARISON_MIN_MAG_LINEAR_MIP_POINT : D3D11_FILTER_COMPARISON_MIN_MAG_MIP_POINT;
-    desc.AddressU = D3D11_TEXTURE_ADDRESS_CLAMP;
-    desc.AddressV = D3D11_TEXTURE_ADDRESS_CLAMP;
-    desc.AddressW = D3D11_TEXTURE_ADDRESS_CLAMP;
-    desc.MaxAnisotropy = 1;
-    desc.ComparisonFunc = D3D11_COMPARISON_LESS_EQUAL;
-    desc.MaxLOD = D3D11_FLOAT32_MAX;
-
-    this->m_d3dDevice->CreateSamplerState(&desc, &state);
-
-    return state;
-}
-
 void CGxDeviceD3d11::ISetTexture(uint32_t slot, CGxTex* texId) {
     ID3D11ShaderResourceView* srv = nullptr;
     ID3D11SamplerState* sampler = nullptr;
 
     if (texId && this->IEnsureTexture(texId)) {
         srv = this->ITexGetData(texId)->m_srv;
-        sampler = texId->m_format == GxTex_D24X8 ? this->IGetShadowSamplerState(texId->m_flags) : this->IGetSamplerState(texId->m_flags);
+        sampler = this->IGetSamplerState(texId->m_flags);
     }
 
     if (srv != this->m_boundSrv[slot]) {

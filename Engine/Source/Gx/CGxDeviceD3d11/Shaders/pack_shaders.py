@@ -1,7 +1,6 @@
 """Packs compiled shader permutations into .bls blobs and writes the lookup table source.
 
     pack_shaders.py <out.cpp> <Vertex|Pixel>:<name>=<perm0.cso>,<perm1.cso> ...
-    pack_shaders.py <out.cpp> @<file with one entry per line>
 """
 import struct
 import sys
@@ -21,11 +20,6 @@ def blob(files):
 
 def main():
     out_path, entries = sys.argv[1], sys.argv[2:]
-
-    if len(entries) == 1 and entries[0].startswith("@"):
-        with open(entries[0][1:]) as f:
-            entries = [line for line in f.read().splitlines() if line]
-
     lines = ['#include "Engine/Source/Gx/CGxDeviceD3d11/GxEmbeddedShaders.h"', ""]
     table = []
     for i, entry in enumerate(entries):

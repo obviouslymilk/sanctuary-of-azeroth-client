@@ -134,11 +134,6 @@ class CGxDeviceD3d11 : public CGxDevice {
     DeviceConstants m_deviceConstants;
     ID3D11Buffer* m_emuConstantsBuffer;
     EmuConstants m_emuConstants;
-    ID3D11Buffer* m_clearConstants;
-    CGxShader* m_clearShaders[2];
-    ID3D11RasterizerState* m_clearRasterizer;
-    ID3D11BlendState* m_clearBlend[2];
-    ID3D11DepthStencilState* m_clearDepth[2];
     float m_vsMirror[256 * 4];
     float m_psMirror[256 * 4];
 
@@ -164,7 +159,6 @@ class CGxDeviceD3d11 : public CGxDevice {
     uint32_t m_fanIndexCount;
     EmergencyMem m_staticEmergencyMem[2];
     ID3D11SamplerState* m_samplerStates[1024];
-    ID3D11SamplerState* m_shadowSamplers[2];
     std::unordered_map<uint64_t, ID3D11RasterizerState*> m_rasterizerStates;
     std::unordered_map<uint64_t, ID3D11BlendState*> m_blendStates;
     std::unordered_map<uint64_t, ID3D11DepthStencilState*> m_depthStates;
@@ -298,7 +292,6 @@ class CGxDeviceD3d11 : public CGxDevice {
     int32_t IEnsureTexture(CGxTex* texId);
     void ISetTexture(uint32_t slot, CGxTex* texId);
     ID3D11SamplerState* IGetSamplerState(const CGxTexFlags& flags);
-    ID3D11SamplerState* IGetShadowSamplerState(const CGxTexFlags& flags);
     void IShaderConstantsFlush();
     void IStateSync();
     void IStateSyncBlend();
@@ -308,8 +301,6 @@ class CGxDeviceD3d11 : public CGxDevice {
     void IStateSyncDeviceConstants();
     void IStateSyncInputLayout();
     void IXformSetViewport();
-    bool ICalcViewport(D3D11_VIEWPORT& viewport);
-    bool ISceneClearViewport(uint32_t mask, CImVector color);
     int32_t IDrawSetup(EGxPrim primType);
 };
 

@@ -82,18 +82,12 @@ if (WIN32 AND WOWDECOMP_ARCH_64)
     gx_d3d11_shader(Vertex UI 2)
     gx_d3d11_shader(Pixel UI 1)
     gx_d3d11_shader(Pixel Desaturate 1)
-    gx_d3d11_shader(Vertex Clear 1)
-    gx_d3d11_shader(Pixel Clear 1)
 
     # world shaders, generated from the DX9 originals by Tools/Shaders/bls_to_hlsl.py
     gx_d3d11_shader(Vertex Terrain 128)
     gx_d3d11_shader(Pixel Terrain0 3)
     gx_d3d11_shader(Pixel Terrain0_env 1)
     gx_d3d11_shader(Pixel Terrain1 32)
-    gx_d3d11_shader(Pixel Terrain3 96)
-    gx_d3d11_shader(Pixel Terrain3_pcf 96)
-    gx_d3d11_shader(Vertex ShadowMap 90)
-    gx_d3d11_shader(Pixel ShadowMapSL 16)
     gx_d3d11_shader(Vertex DetailDoodad 6)
     gx_d3d11_shader(Pixel DetailDoodad 8)
     gx_d3d11_shader(Vertex vsLiquidWater 4)
@@ -106,13 +100,9 @@ if (WIN32 AND WOWDECOMP_ARCH_64)
     gx_d3d11_shader(Pixel WaterRipples 1)
 
     set(GX_SHADER_TABLE ${CMAKE_CURRENT_BINARY_DIR}/GxEmbeddedShaderTable.cpp)
-    # the permutation list is too long for a command line
-    set(GX_SHADER_PACK_LIST ${CMAKE_CURRENT_BINARY_DIR}/GxEmbeddedShaders.list)
-    string(REPLACE ";" "\n" GX_SHADER_PACK_TEXT "${GX_SHADER_PACK_ARGS}")
-    file(WRITE ${GX_SHADER_PACK_LIST} "${GX_SHADER_PACK_TEXT}\n")
     add_custom_command(
         OUTPUT ${GX_SHADER_TABLE}
-        COMMAND ${Python3_EXECUTABLE} ${GX_SHADER_DIR}/pack_shaders.py ${GX_SHADER_TABLE} @${GX_SHADER_PACK_LIST}
+        COMMAND ${Python3_EXECUTABLE} ${GX_SHADER_DIR}/pack_shaders.py ${GX_SHADER_TABLE} ${GX_SHADER_PACK_ARGS}
         DEPENDS ${GX_SHADER_OUTPUTS} ${GX_SHADER_DIR}/pack_shaders.py
         COMMENT "Packing embedded D3D11 shaders"
         VERBATIM

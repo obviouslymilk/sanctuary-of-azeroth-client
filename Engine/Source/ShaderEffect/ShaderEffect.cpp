@@ -33,9 +33,6 @@ int32_t CShaderEffect::s_lightEnabled;
 // STATIC: 0x00D43020
 int32_t CShaderEffect::s_enableShaders;
 
-// D3D11 draws models with the fixed function emulation, only the shadow map pass runs shader effects
-int32_t CShaderEffect::s_shadowPass;
-
 // STATIC: 0x00D43024
 CShaderEffect* CShaderEffect::s_curEffect;
 
@@ -131,7 +128,7 @@ void CShaderEffect::SetUsePcfFiltering(uint32_t usePcfFiltering) {
     if (usePcfFiltering) {
         CShaderEffect::s_usePcfFiltering = 1;
 
-        if (CShaderEffect::s_enableShaders || g_theGxDevicePtr->DeviceApi() == GxApi_D3d11) {
+        if (CShaderEffect::s_enableShaders) {
             return;
         }
     }
@@ -142,7 +139,7 @@ void CShaderEffect::SetUsePcfFiltering(uint32_t usePcfFiltering) {
 // VERIFY: b3663650 manual
 // OFFSET: 0x00872B00
 void CShaderEffect::UpdateWorldViewMatrix() {
-    if (!CShaderEffect::s_enableShaders && !CShaderEffect::s_shadowPass) {
+    if (!CShaderEffect::s_enableShaders) {
         return;
     }
 
@@ -162,7 +159,7 @@ void CShaderEffect::UpdateWorldViewMatrix() {
 // VERIFY: 3063e016 auto
 // OFFSET: 0x00872C10
 void CShaderEffect::UpdateProjMatrix() {
-    if (!CShaderEffect::s_enableShaders && !CShaderEffect::s_shadowPass) {
+    if (!CShaderEffect::s_enableShaders) {
         return;
     }
 
@@ -253,7 +250,7 @@ void CShaderEffect::SetGlobalLighting(CM2Light* light) {
 void CShaderEffect::SetCurrent() {
     CShaderEffect::s_curEffect = this;
 
-    if (CShaderEffect::s_enableShaders || CShaderEffect::s_shadowPass || !this->m_fixedFuncPassCount) {
+    if (CShaderEffect::s_enableShaders || !this->m_fixedFuncPassCount) {
         return;
     }
 
@@ -268,7 +265,7 @@ void CShaderEffect::SetCurrent() {
 void CShaderEffect::SetShaders(uint32_t vertexPermute, uint32_t pixelPermute) {
     int32_t useAlphaRef = 1;
 
-    if (CShaderEffect::s_enableShaders || CShaderEffect::s_shadowPass) {
+    if (CShaderEffect::s_enableShaders) {
         g_theGxDevicePtr->RsSet(GxRs_VertexShader, CShaderEffect::s_curEffect->m_vertexShaders[vertexPermute]);
         g_theGxDevicePtr->RsSet(GxRs_PixelShader, CShaderEffect::s_curEffect->m_pixelShaders[pixelPermute]);
         useAlphaRef = (pixelPermute & 8) == 0;
@@ -292,7 +289,7 @@ void CShaderEffect::SetShaders(uint32_t vertexPermute, uint32_t pixelPermute) {
 // VERIFY: f5c47bbc auto
 // OFFSET: 0x00873160
 void CShaderEffect::SetDefaultShaders(uint32_t lightCount) {
-    if (!CShaderEffect::s_enableShaders && !CShaderEffect::s_shadowPass) {
+    if (!CShaderEffect::s_enableShaders) {
         return;
     }
 
@@ -367,7 +364,7 @@ void CShaderEffect::SetFogEnabled(int32_t enabled) {
 // VERIFY: c6b67cc5 manual
 // OFFSET: 0x00873480
 void CShaderEffect::SetTexMtx_Identity(uint32_t stage) {
-    if (CShaderEffect::s_enableShaders || CShaderEffect::s_shadowPass) {
+    if (CShaderEffect::s_enableShaders) {
         float matrix[8] = { 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f };
         GxShaderConstantsSet(GxSh_Vertex, 2 * stage + 6, matrix, 2);
         return;
